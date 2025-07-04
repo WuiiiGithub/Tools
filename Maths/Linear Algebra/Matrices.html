@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linear Transformation Visualizer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for better aesthetics and responsiveness */
+        body {
+            font-family: "Inter", sans-serif;
+            background-color: #f0f4ff; /* Light background */
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh; /* Full viewport height */
+            overflow: hidden; /* Prevent body scroll */
+        }
+        /* Main container for the layout */
+        .main-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            position: relative; /* Needed for absolute positioning of the toggle button */
+        }
+        /* Sidebar styles */
+        .sidebar {
+            width: 320px; /* Default width for sidebar */
+            background-color: #ffffff;
+            border-right: 1px solid #e2e8f0; /* Light border */
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05); /* Soft shadow */
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            transition: transform 0.3s ease-in-out, width 0.3s ease-in-out, padding 0.3s ease-in-out; /* Smooth transition for opening/closing */
+            transform: translateX(0); /* Default: visible */
+            position: relative; /* For the toggle button positioning (though it's now global) */
+            z-index: 10; /* Ensure it's above canvas */
+            flex-shrink: 0; /* Prevent shrinking */
+            overflow-y: auto; /* Allow scrolling for content if needed */
+        }
+        .sidebar.collapsed {
+            transform: translateX(-100%); /* Hide by sliding left */
+            width: 0; /* Collapse width */
+            padding: 0; /* Remove padding */
+            border-right: none; /* Remove border when collapsed */
+            overflow: hidden; /* Hide content */
+        }
+        /* Canvas container styles */
+        .canvas-container {
+            flex-grow: 1; /* Canvas takes all available space */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #ffffff;
+            position: relative; /* For the toggle button (if it were inside) */
+        }
+        canvas {
+            border: 1px solid #e2e8f0; /* Light border for canvas */
+            background-color: #ffffff;
+            border-radius: 8px;
+            width: 100%; /* Make canvas responsive */
+            height: 100%; /* Make canvas responsive */
+            display: block; /* Remove extra space below canvas */
+            cursor: grab; /* Indicate draggable */
+        }
+        canvas.grabbing {
+            cursor: grabbing;
+        }
+        input[type="number"] {
+            width: 80px; /* Fixed width for matrix inputs */
+            padding: 8px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #3b82f6; /* Blue on focus */
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        .matrix-input-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            justify-items: center;
+        }
+        .button {
+            padding: 10px 20px;
+            background-color: #3b82f6; /* Blue button */
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background-color 0.2s, transform 0.1s;
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+        }
+        .button:hover {
+            background-color: #2563eb; /* Darker blue on hover */
+            transform: translateY(-2px); /* Slight lift effect */
+        }
+        .button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3);
+        }
+        .button-secondary {
+            background-color: #6b7280; /* Gray button */
+        }
+        .button-secondary:hover {
+            background-color: #4b5563;
+        }
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            color: #4a5568;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 1px solid #cbd5e0;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            cursor: pointer;
+            position: relative;
+            background-color: #edf2f7;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .checkbox-group input[type="checkbox"]:checked {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+        }
+        .checkbox-group input[type="checkbox"]:checked::after {
+            content: '✔';
+            display: block;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 10px;
+        }
+
+        /* New global sidebar toggle button */
+        .global-sidebar-toggle-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px; /* Fully rounded corners */
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            line-height: 1;
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+            z-index: 20; /* Ensure it's on top of everything */
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .global-sidebar-toggle-btn:hover {
+            background-color: #2563eb;
+            transform: translateY(-2px);
+        }
+        .global-sidebar-toggle-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute; /* Overlay on smaller screens */
+                height: 100%;
+                width: 280px; /* Slightly smaller width for mobile */
+                box-shadow: 0 0 15px rgba(0, 0, 0, 0.2); /* Stronger shadow for overlay */
+            }
+            .sidebar.collapsed {
+                transform: translateX(-100%);
+            }
+            .global-sidebar-toggle-btn {
+                top: 10px; /* Adjust position for smaller screens */
+                right: 10px;
+                padding: 8px 12px; /* Smaller padding */
+                font-size: 1rem;
+            }
+        }
+
+        /* Matrix Pill Styles */
+        .matrix-pill {
+            background-color: #e0f2fe; /* Light blue background */
+            border: 1px solid #90cdf4; /* Blue border */
+            border-radius: 8px;
+            padding: 10px 15px;
+            display: flex;
+            flex-direction: row; /* Arrange items horizontally */
+            align-items: center; /* Vertically align items */
+            justify-content: space-between; /* Space out content and buttons */
+            gap: 10px; /* Gap between elements */
+            font-size: 0.9rem;
+            color: #2c5282;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            position: relative; /* For actions absolute positioning */
+        }
+        .matrix-pill-content {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1; /* Allow content to take available space */
+        }
+        .matrix-pill-values {
+            display: grid;
+            grid-template-columns: repeat(2, auto);
+            gap: 5px 10px;
+            font-family: 'Courier New', monospace; /* Monospace for matrix values */
+            font-weight: bold;
+        }
+        .matrix-pill-actions {
+            display: flex;
+            flex-direction: column; /* Vertical column for buttons */
+            gap: 5px; /* Smaller gap between buttons */
+            position: absolute; /* Position absolutely on the right */
+            right: 10px; /* Distance from right edge of pill */
+            top: 50%; /* Center vertically */
+            transform: translateY(-50%); /* Adjust for vertical centering */
+            opacity: 0; /* Hidden by default */
+            transition: opacity 0.2s ease-in-out; /* Smooth fade in/out */
+        }
+        .matrix-pill:hover .matrix-pill-actions {
+            opacity: 1; /* Show on hover */
+        }
+        .matrix-pill-actions button {
+            padding: 5px 8px; /* Smaller padding for icons */
+            font-size: 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            line-height: 1; /* Ensure icon is centered */
+            display: flex; /* Use flex to center SVG icon */
+            justify-content: center;
+            align-items: center;
+        }
+        .matrix-pill-actions button svg {
+            color: white; /* Make SVG icons white */
+        }
+        .matrix-pill-actions .duplicate-btn {
+            background-color: #34d399; /* Green for duplicate */
+            border: none;
+        }
+        .matrix-pill-actions .duplicate-btn:hover {
+            background-color: #10b981;
+        }
+        .matrix-pill-actions .edit-btn {
+            background-color: #3b82f6; /* Blue */
+            border: none;
+        }
+        .matrix-pill-actions .edit-btn:hover {
+            background-color: #2563eb;
+        }
+        .matrix-pill-actions .delete-btn {
+            background-color: #ef4444; /* Red */
+            border: none;
+        }
+        .matrix-pill-actions .delete-btn:hover {
+            background-color: #dc2626;
+        }
+        .matrix-pill.inverse {
+            background-color: #ffe0f0; /* Lighter red for inverse pills */
+            border-color: #fca5a5; /* Red border */
+            color: #9b2c2c;
+        }
+        .matrix-pill.inverse .matrix-pill-actions .edit-btn {
+            background-color: #f6ad55; /* Orange for inverse edit */
+        }
+        .matrix-pill.inverse .matrix-pill-actions .edit-btn:hover {
+            background-color: #ed8936;
+        }
+
+        /* Message box for errors */
+        .message-box {
+            background-color: #fef2f2; /* Red-50 */
+            border: 1px solid #ef4444; /* Red-500 */
+            color: #b91c1c; /* Red-700 */
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            display: none; /* Hidden by default */
+            align-items: center;
+            gap: 10px;
+        }
+        .message-box.show {
+            display: flex;
+        }
+        .message-box .close-btn {
+            background: none;
+            border: none;
+            color: #b91c1c;
+            font-weight: bold;
+            font-size: 1.1rem;
+            cursor: pointer;
+            margin-left: auto;
+        }
+    </style>
+</head>
+<body class="antialiased text-gray-800">
+
+    <div class="main-container">
+        <!-- Sidebar for controls and matrix editor -->
+        <div id="sidebar" class="sidebar">
+            <h1 class="text-2xl font-bold text-center text-gray-900 mb-4">Linear Transformation</h1>
+
+            <!-- Matrix Cascade Display -->
+            <div class="cascade-section bg-gray-50 p-4 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-gray-800 mb-3">Matrix Cascade:</h2>
+                <div id="matrixCascadePills" class="flex flex-col gap-2">
+                    <!-- Pills will be rendered here by JS -->
+                </div>
+            </div>
+
+            <!-- New Matrix Editor Section -->
+            <div class="new-matrix-editor flex flex-col gap-4 mt-6 p-4 bg-blue-50 rounded-lg shadow-md">
+                <h2 id="editorTitle" class="text-xl font-semibold text-blue-800">Define New Matrix M<sub>i</sub>:</h2>
+                <div class="matrix-input-grid">
+                    <input type="number" id="m00" value="1" step="0.1" class="col-span-1">
+                    <input type="number" id="m01" value="0" step="0.1" class="col-span-1">
+                    <input type="number" id="m10" value="0" step="0.1" class="col-span-1">
+                    <input type="number" id="m11" value="1" step="0.1" class="col-span-1">
+                </div>
+                
+                <button id="computeInverseBtn" class="button button-secondary">Compute Inverse</button>
+                
+                <button id="actionButton" class="button">Add Matrix to Cascade</button>
+                <button id="cancelEditButton" class="button button-secondary hidden">Cancel Edit</button>
+                <div id="messageBox" class="message-box">
+                    <span></span>
+                    <button class="close-btn">&times;</button>
+                </div>
+            </div>
+
+            <!-- Existing Checkboxes and Description -->
+            <div class="checkbox-group mt-4">
+                <label for="showOriginal">
+                    <input type="checkbox" id="showOriginal" checked>
+                    Show Original Space (Blue)
+                </label>
+                <label for="showTransformed">
+                    <input type="checkbox" id="showTransformed" checked>
+                    Show Transformed Space (Red)
+                </label>
+            </div>
+
+            <div class="description mt-4 text-sm text-gray-600">
+                <p><strong>Original Space:</strong> <span class="font-bold text-blue-600">Blue Grid & Vectors</span></p>
+                <p><strong>Transformed Space:</strong> <span class="font-bold text-red-600">Red Grid & Vectors</span></p>
+                <p class="mt-2">Use the checkboxes to toggle visibility. Click and drag the canvas to pan the view. Use the mouse wheel to zoom.</p>
+                <p class="mt-1">Hover over basis vectors (X, Y, X1, X2) to see their projections on the standard axes.</p>
+            </div>
+        </div>
+
+        <!-- Canvas container -->
+        <div class="canvas-container">
+            <canvas id="transformationCanvas"></canvas>
+        </div>
+
+        <!-- New global toggle button for the sidebar -->
+        <button id="sidebarToggleBtn" class="global-sidebar-toggle-btn">
+            ☰ <!-- Hamburger icon -->
+        </button>
+    </div>
+
+    <script>
+        // Get canvas and its 2D rendering context
+        const canvas = document.getElementById('transformationCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Get matrix input elements
+        const m00Input = document.getElementById('m00');
+        const m01Input = document.getElementById('m01');
+        const m10Input = document.getElementById('m10');
+        const m11Input = document.getElementById('m11');
+        const computeInverseBtn = document.getElementById('computeInverseBtn');
+        const actionButton = document.getElementById('actionButton');
+        const cancelEditButton = document.getElementById('cancelEditButton');
+        const editorTitle = document.getElementById('editorTitle');
+        const matrixCascadePills = document.getElementById('matrixCascadePills');
+        const messageBox = document.getElementById('messageBox');
+        const messageBoxText = messageBox.querySelector('span');
+        const messageBoxCloseBtn = messageBox.querySelector('.close-btn');
+
+        // Get checkbox elements
+        const showOriginalCheckbox = document.getElementById('showOriginal');
+        const showTransformedCheckbox = document.getElementById('showTransformed');
+
+        // Get sidebar elements
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+
+        // Define canvas center, initial scale, pan offsets, and zoom limits
+        let centerX, centerY;
+        const INITIAL_SCALE = 50; // Reference scale for font sizing and tick calculation
+        let scale = INITIAL_SCALE; // Current scale: pixels per unit
+        let offsetX = 0; // Pan offset X
+        let offsetY = 0; // Pan offset Y
+        let isDragging = false;
+        let lastMouseX, lastMouseY;
+        let hoveredVector = null; // Stores the label of the currently hovered vector ('X', 'Y', 'x1', 'x2')
+
+        const MIN_SCALE = 10;
+        const MAX_SCALE = 200;
+
+        // Base font sizes for dynamic scaling
+        const VECTOR_LABEL_BASE_FONT_SIZE = 16;
+        const AXIS_LABEL_BASE_FONT_SIZE = 18;
+        const TICK_LABEL_BASE_FONT_SIZE = 14;
+
+        // Array to store the cascade of matrices
+        let matrixCascade = [];
+        let editingMatrixId = null; // Stores the ID of the matrix currently being edited
+
+        // State for the editor's current matrix (original values and whether it's currently showing inverse)
+        let currentEditorMatrixOriginalValues = [[1, 0], [0, 1]];
+        let currentEditorIsInverse = false;
+
+        /**
+         * Displays a message in the message box.
+         * @param {string} message - The message to display.
+         * @param {string} type - 'error' or 'info'.
+         */
+        function showMessage(message, type = 'info') {
+            messageBoxText.textContent = message;
+            messageBox.className = `message-box show ${type === 'error' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-blue-50 border-blue-500 text-blue-700'}`;
+            messageBoxCloseBtn.onclick = hideMessage;
+        }
+
+        /**
+         * Hides the message box.
+         */
+        function hideMessage() {
+            messageBox.classList.remove('show');
+        }
+
+        /**
+         * Generates a unique ID for matrix pills.
+         * @returns {string} A unique ID string.
+         */
+        function generateUniqueId() {
+            return '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        /**
+         * Calculates a dynamic font size based on the current scale.
+         * This aims to keep the font size relatively consistent on screen.
+         * @param {number} baseFontSize - The base font size for scaling.
+         * @returns {number} - The dynamically calculated font size.
+         */
+        function getDynamicFontSize(baseFontSize) {
+            return Math.max(baseFontSize * 0.9, Math.min(baseFontSize * 1.1, baseFontSize));
+        }
+
+        /**
+         * Initializes canvas dimensions and drawing parameters.
+         * This function is called on window load and resize to ensure responsiveness.
+         */
+        function initializeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            centerX = canvas.width / 2;
+            centerY = canvas.height / 2;
+            scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.min(canvas.width, canvas.height) / 10));
+        }
+
+        /**
+         * Converts Cartesian coordinates (relative to center) to canvas coordinates,
+         * applying current pan offset.
+         * @param {number} x - Cartesian X coordinate.
+         * @param {number} y - Cartesian Y coordinate.
+         * @returns {object} - Object with cx (canvas X) and cy (canvas Y).
+         */
+        function toCanvasCoords(x, y) {
+            return {
+                cx: centerX + x * scale + offsetX,
+                cy: centerY - y * scale + offsetY
+            };
+        }
+
+        /**
+         * Converts canvas coordinates to Cartesian coordinates,
+         * accounting for pan offset and scale.
+         * @param {number} cx - Canvas X coordinate.
+         * @param {number} cy - Canvas Y coordinate.
+         * @returns {number[]} - Array with Cartesian [x, y].
+         */
+        function toCartesianCoords(cx, cy) {
+            const x = (cx - centerX - offsetX) / scale;
+            const y = (centerY - cy + offsetY) / scale;
+            return [x, y];
+        }
+
+        /**
+         * Multiplies a 2x2 matrix by a 2D vector.
+         * @param {number[][]} matrix - The 2x2 matrix [[a, b], [c, d]].
+         * @param {number[]} vector - The 2D vector [x, y].
+         * @returns {number[]} - The transformed vector [x', y'].
+         */
+        function multiplyMatrixVector(matrix, vector) {
+            const x = vector[0];
+            const y = vector[1];
+            const m00 = matrix[0][0];
+            const m01 = matrix[0][1];
+            const m10 = matrix[1][0];
+            const m11 = matrix[1][1];
+
+            const transformedX = m00 * x + m01 * y;
+            const transformedY = m10 * x + m11 * y;
+            return [transformedX, transformedY];
+        }
+
+        /**
+         * Multiplies two 2x2 matrices.
+         * @param {number[][]} m1 - The first 2x2 matrix.
+         * @param {number[][]} m2 - The second 2x2 matrix.
+         * @returns {number[][]} The resulting 2x2 matrix (m1 * m2).
+         */
+        function multiplyMatrices(m1, m2) {
+            const result = [
+                [0, 0],
+                [0, 0]
+            ];
+            result[0][0] = m1[0][0] * m2[0][0] + m1[0][1] * m2[1][0];
+            result[0][1] = m1[0][0] * m2[0][1] + m1[0][1] * m2[1][1];
+            result[1][0] = m1[1][0] * m2[0][0] + m1[1][1] * m2[1][0];
+            result[1][1] = m1[1][0] * m2[0][1] + m1[1][1] * m2[1][1];
+            return result;
+        }
+
+
+        /**
+         * Calculates the inverse of a 2x2 matrix.
+         * @param {number[][]} matrix - The 2x2 matrix [[a, b], [c, d]].
+         * @returns {number[][]|null} The inverse matrix or null if singular.
+         */
+        function calculateInverse(matrix) {
+            const a = matrix[0][0];
+            const b = matrix[0][1];
+            const c = matrix[1][0];
+            const d = matrix[1][1];
+
+            const determinant = a * d - b * c;
+
+            if (Math.abs(determinant) < 1e-9) { // Check for near-zero determinant (singular matrix)
+                return null;
+            }
+
+            const invDet = 1 / determinant;
+
+            return [
+                [d * invDet, -b * invDet],
+                [-c * invDet, a * invDet]
+            ];
+        }
+
+        /**
+         * Draws a vector from the origin to a given point on the canvas.
+         * @param {CanvasRenderingContext2D} context - The 2D rendering context.
+         * @param {number[]} vector - The vector as [x, y].
+         * @param {string} color - The color to draw the vector.
+         * @param {number} lineWidth - The width of the line.
+         * @param {string} [label=null] - Optional label for the vector.
+         */
+        function drawVector(context, vector, color, lineWidth = 3, label = null) {
+            const startCartesian = [0, 0];
+            const endCartesian = [vector[0], vector[1]];
+
+            const startCanvas = toCanvasCoords(startCartesian[0], startCartesian[1]);
+            const endCanvas = toCanvasCoords(endCartesian[0], endCartesian[1]);
+
+            context.beginPath();
+            context.moveTo(startCanvas.cx, startCanvas.cy);
+            context.lineTo(endCanvas.cx, endCanvas.cy);
+            context.strokeStyle = color;
+            context.lineWidth = lineWidth;
+            context.stroke();
+
+            // Draw arrow head
+            const angle = Math.atan2(vector[1], vector[0]);
+            const dynamicArrowSize = Math.max(4, Math.min(16, 8 * (scale / INITIAL_SCALE)));
+            const arrowAngleOffset = Math.PI / 6;
+
+            context.beginPath();
+            context.moveTo(endCanvas.cx, endCanvas.cy);
+            context.lineTo(endCanvas.cx - dynamicArrowSize * Math.cos(angle - arrowAngleOffset), endCanvas.cy + dynamicArrowSize * Math.sin(angle - arrowAngleOffset));
+            context.moveTo(endCanvas.cx, endCanvas.cy);
+            context.lineTo(endCanvas.cx - dynamicArrowSize * Math.cos(angle + arrowAngleOffset), endCanvas.cy + dynamicArrowSize * Math.sin(angle + arrowAngleOffset));
+            context.strokeStyle = color;
+            context.lineWidth = lineWidth;
+            context.stroke();
+
+            // Draw label if provided
+            if (label) {
+                const dynamicFontSize = getDynamicFontSize(VECTOR_LABEL_BASE_FONT_SIZE);
+                context.fillStyle = color;
+                context.font = `bold ${dynamicFontSize}px Inter`;
+
+                const labelOffsetDist = dynamicFontSize * 1.5;
+                let labelX = endCanvas.cx;
+                let labelY = endCanvas.cy;
+
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+
+                switch (label) {
+                    case 'X':
+                        labelX = endCanvas.cx;
+                        labelY = endCanvas.cy + labelOffsetDist;
+                        break;
+                    case 'Y':
+                        labelX = endCanvas.cx - labelOffsetDist;
+                        labelY = endCanvas.cy;
+                        context.textAlign = 'right';
+                        break;
+                    case 'X1':
+                        // Position slightly beyond the tip, along the vector's direction
+                        labelX = endCanvas.cx + labelOffsetDist * Math.cos(angle);
+                        labelY = endCanvas.cy + labelOffsetDist * Math.sin(angle);
+
+                        // Adjust text alignment for better appearance based on quadrant
+                        if (angle > -Math.PI / 4 && angle <= Math.PI / 4) { // Right-ish
+                            context.textAlign = 'left';
+                        } else if (angle > Math.PI / 4 && angle <= 3 * Math.PI / 4) { // Up-ish
+                            context.textBaseline = 'bottom';
+                        } else if (angle > 3 * Math.PI / 4 || angle <= -3 * Math.PI / 4) { // Left-ish
+                            context.textAlign = 'right';
+                        } else { // Down-ish
+                            context.textBaseline = 'top';
+                        }
+                        break;
+                    case 'X2':
+                        const x2VerticalOffset = 35; // Increased vertical offset for X2 label
+
+                        // Position slightly beyond the tip, along the vector's direction
+                        labelX = endCanvas.cx + labelOffsetDist * Math.cos(angle);
+                        labelY = endCanvas.cy + labelOffsetDist * Math.sin(angle) - x2VerticalOffset; // Always move up on canvas
+
+                        // Adjust text alignment for better appearance based on quadrant
+                        context.textBaseline = 'bottom'; // Always draw text above the calculated labelY point
+
+                        if (angle > -Math.PI / 4 && angle <= Math.PI / 4) { // Right-ish
+                            context.textAlign = 'left';
+                        } else if (angle > Math.PI / 4 && angle <= 3 * Math.PI / 4) { // Up-ish
+                            context.textAlign = 'center';
+                        } else if (angle > 3 * Math.PI / 4 || angle <= -3 * Math.PI / 4) { // Left-ish
+                            context.textAlign = 'right';
+                        } else { // Down-ish
+                            context.textAlign = 'center';
+                        }
+                        break;
+                    default:
+                        labelX = endCanvas.cx + labelOffsetDist * Math.cos(angle);
+                        labelY = endCanvas.cy + labelOffsetDist * Math.sin(angle);
+                        break;
+                }
+                context.fillText(label, labelX, labelY);
+            }
+        }
+
+        /**
+         * Draws the grid lines on the canvas.
+         * @param {CanvasRenderingContext2D} context - The 2D rendering context.
+         * @param {string} color - The color of the grid lines.
+         * @param {number} lineWidth - The width of the grid lines.
+         * @param {number[][]} [transformMatrix=null] - Optional 2x2 transformation matrix to apply to grid points.
+         */
+        function drawGrid(context, color, lineWidth, transformMatrix = null) {
+            context.strokeStyle = color;
+            context.lineWidth = lineWidth;
+
+            const viewMinX = toCartesianCoords(0, 0)[0];
+            const viewMaxX = toCartesianCoords(canvas.width, 0)[0];
+            const viewMinY = toCartesianCoords(0, canvas.height)[1];
+            const viewMaxY = toCartesianCoords(0, 0)[1];
+            const gridRange = Math.ceil(Math.max(Math.abs(viewMinX), Math.abs(viewMaxX), Math.abs(viewMinY), Math.abs(viewMaxY))) + 2;
+
+            for (let i = -gridRange; i <= gridRange; i++) {
+                let p1 = [i, -gridRange];
+                let p2 = [i, gridRange];
+                if (transformMatrix) {
+                    p1 = multiplyMatrixVector(transformMatrix, p1);
+                    p2 = multiplyMatrixVector(transformMatrix, p2);
+                }
+                const start = toCanvasCoords(p1[0], p1[1]);
+                const end = toCanvasCoords(p2[0], p2[1]);
+                context.beginPath();
+                context.moveTo(start.cx, start.cy);
+                context.lineTo(end.cx, end.cy);
+                context.stroke();
+            }
+
+            for (let i = -gridRange; i <= gridRange; i++) {
+                let p1 = [-gridRange, i];
+                let p2 = [gridRange, i];
+                if (transformMatrix) {
+                    p1 = multiplyMatrixVector(transformMatrix, p1);
+                    p2 = multiplyMatrixVector(transformMatrix, p2);
+                }
+                const start = toCanvasCoords(p1[0], p1[1]);
+                const end = toCanvasCoords(p2[0], p2[1]);
+                context.beginPath();
+                context.moveTo(start.cx, start.cy);
+                context.lineTo(end.cx, end.cy);
+                context.stroke();
+            }
+        }
+
+        /**
+         * Draws the X and Y axes (or their transformed versions).
+         * @param {CanvasRenderingContext2D} context - The 2D rendering context.
+         * @param {string} color - The color of the axes.
+         * @param {number} lineWidth - The width of the axis lines.
+         * @param {number[][]} [transformMatrix=null] - Optional 2x2 transformation matrix.
+         * @param {boolean} drawXYLabels - Whether to draw 'X' and 'Y' labels.
+         */
+        function drawAxes(context, color, lineWidth, transformMatrix = null, drawXYLabels = false) {
+            context.strokeStyle = color;
+            context.lineWidth = lineWidth;
+
+            const axisRange = Math.max(
+                Math.abs(toCartesianCoords(0, 0)[0]),
+                Math.abs(toCartesianCoords(canvas.width, 0)[0]),
+                Math.abs(toCartesianCoords(0, canvas.height)[1]),
+                Math.abs(toCartesianCoords(0, 0)[1])
+            ) + 2;
+
+            if (transformMatrix) {
+                let xAxisStart = multiplyMatrixVector(transformMatrix, [-axisRange, 0]);
+                let xAxisEnd = multiplyMatrixVector(transformMatrix, [axisRange, 0]);
+                let yAxisStart = multiplyMatrixVector(transformMatrix, [0, -axisRange]);
+                let yAxisEnd = multiplyMatrixVector(transformMatrix, [0, axisRange]);
+
+                context.beginPath();
+                let start = toCanvasCoords(xAxisStart[0], xAxisStart[1]);
+                let end = toCanvasCoords(xAxisEnd[0], xAxisEnd[1]);
+                context.moveTo(start.cx, start.cy);
+                context.lineTo(end.cx, end.cy);
+                context.stroke();
+
+                context.beginPath();
+                start = toCanvasCoords(yAxisStart[0], yAxisStart[1]);
+                end = toCanvasCoords(yAxisEnd[0], yAxisEnd[1]);
+                context.moveTo(start.cx, start.cy);
+                context.lineTo(end.cx, end.cy);
+                context.stroke();
+
+            } else {
+                let originCanvasCoords = toCanvasCoords(0, 0);
+                let xMaxCanvas = toCanvasCoords(axisRange, 0).cx;
+                let yMaxCanvas = toCanvasCoords(0, axisRange).cy;
+                let xMinCanvas = toCanvasCoords(-axisRange, 0).cx;
+                let yMinCanvas = toCanvasCoords(0, -axisRange).cy;
+
+                context.beginPath();
+                context.moveTo(xMinCanvas, originCanvasCoords.cy);
+                context.lineTo(xMaxCanvas, originCanvasCoords.cy);
+                context.stroke();
+
+                context.beginPath();
+                context.moveTo(originCanvasCoords.cx, yMinCanvas);
+                context.lineTo(originCanvasCoords.cx, yMaxCanvas);
+                context.stroke();
+
+                if (drawXYLabels) {
+                    const dynamicFontSize = getDynamicFontSize(AXIS_LABEL_BASE_FONT_SIZE);
+                    context.fillStyle = '#4a5568';
+                    context.font = `bold ${dynamicFontSize}px Inter`;
+                    context.textAlign = 'center';
+                    context.textBaseline = 'middle';
+
+                    const xLabelPos = toCanvasCoords(axisRange - (dynamicFontSize / scale), -(dynamicFontSize / scale) * 0.5);
+                    context.fillText('X', xLabelPos.cx, xLabelPos.cy);
+
+                    const yLabelPos = toCanvasCoords(-(dynamicFontSize / scale) * 0.5, axisRange - (dynamicFontSize / scale));
+                    context.fillText('Y', yLabelPos.cx, yLabelPos.cy);
+                }
+            }
+        }
+
+        /**
+         * Calculates a "nice" tick step for the axes based on the current scale.
+         * @returns {number} - The calculated tick step.
+         */
+        function getNiceTickStep() {
+            const desiredTickCount = 8;
+            const visibleWidthUnits = canvas.width / scale;
+            const visibleHeightUnits = canvas.height / scale;
+            const approxTickStep = Math.max(visibleWidthUnits, visibleHeightUnits) / desiredTickCount;
+
+            const powerOfTen = Math.pow(10, Math.floor(Math.log10(approxTickStep)));
+            let niceStep = powerOfTen;
+            const normalizedStep = approxTickStep / powerOfTen;
+
+            if (normalizedStep < 1.5) {
+                niceStep = 1 * powerOfTen;
+            } else if (normalizedStep < 3.5) {
+                niceStep = 2 * powerOfTen;
+            } else if (normalizedStep < 7.5) {
+                niceStep = 5 * powerOfTen;
+            } else {
+                niceStep = 10 * powerOfTen;
+            }
+            return niceStep;
+        }
+
+        /**
+         * Draws numerical tick marks and their labels along the axes.
+         * @param {CanvasRenderingContext2D} context - The 2D rendering context.
+         * @param {string} color - The color of the ticks and labels.
+         * @param {number[][]} [transformMatrix=null] - Optional 2x2 transformation matrix to apply to tick points.
+         */
+        function drawTicksAndLabels(context, color, transformMatrix = null) {
+            const dynamicFontSize = getDynamicFontSize(TICK_LABEL_BASE_FONT_SIZE);
+            context.fillStyle = color;
+            context.font = `${dynamicFontSize}px Inter`;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            const tickLength = 4;
+            const labelOffset = dynamicFontSize * 1.5;
+
+            const originCanvasCoords = toCanvasCoords(0, 0);
+            const minDistanceForLabel = dynamicFontSize * 1.5;
+
+            const tickStep = getNiceTickStep();
+
+            const viewMinX = toCartesianCoords(0, 0)[0];
+            const viewMaxX = toCartesianCoords(canvas.width, 0)[0];
+            const viewMinY = toCartesianCoords(0, canvas.height)[1];
+            const viewMaxY = toCartesianCoords(0, 0)[1];
+
+            for (let i = Math.floor(viewMinX / tickStep) * tickStep; i <= Math.ceil(viewMaxX / tickStep) * tickStep; i += tickStep) {
+                if (Math.abs(i) < 0.001) continue;
+
+                let originalPointX = [i, 0];
+                let transformedPointX = transformMatrix ? multiplyMatrixVector(transformMatrix, originalPointX) : originalPointX;
+                let pX = toCanvasCoords(transformedPointX[0], transformedPointX[1]);
+
+                if (pX.cx > 0 && pX.cx < canvas.width && pX.cy > 0 && pX.cy < canvas.height) {
+                    context.beginPath();
+                    context.moveTo(pX.cx, pX.cy - tickLength);
+                    context.lineTo(pX.cx, pX.cy + tickLength);
+                    context.strokeStyle = color;
+                    context.lineWidth = 1;
+                    context.stroke();
+                    
+                    if (Math.sqrt(Math.pow(pX.cx - originCanvasCoords.cx, 2) + Math.pow(pX.cy - originCanvasCoords.cy, 2)) > minDistanceForLabel) {
+                         context.fillText(i.toFixed(2).replace(/\.?0+$/, ''), pX.cx, pX.cy + labelOffset);
+                    }
+                }
+            }
+
+            for (let i = Math.floor(viewMinY / tickStep) * tickStep; i <= Math.ceil(viewMaxY / tickStep) * tickStep; i += tickStep) {
+                if (Math.abs(i) < 0.001) continue;
+
+                let originalPointY = [0, i];
+                let transformedPointY = transformMatrix ? multiplyMatrixVector(transformMatrix, originalPointY) : originalPointY;
+                let pY = toCanvasCoords(transformedPointY[0], transformedPointY[1]);
+
+                if (pY.cx > 0 && pY.cx < canvas.width && pY.cy > 0 && pY.cy < canvas.height) {
+                    context.beginPath();
+                    context.moveTo(pY.cx - tickLength, pY.cy);
+                    context.lineTo(pY.cx + tickLength, pY.cy);
+                    context.strokeStyle = color;
+                    context.lineWidth = 1;
+                    context.stroke();
+
+                    if (Math.sqrt(Math.pow(pY.cx - originCanvasCoords.cx, 2) + Math.pow(pY.cy - originCanvasCoords.cy, 2)) > minDistanceForLabel) {
+                        context.fillText(i.toFixed(2).replace(/\.?0+$/, ''), pY.cx - labelOffset, pY.cy);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Draws projection lines from a vector's tip to the standard X and Y axes.
+         * @param {CanvasRenderingContext2D} context - The 2D rendering context.
+         * @param {number[]} vector - The vector [x, y] whose projections are to be drawn.
+         * @param {string} color - The color for the projection lines.
+         */
+        function drawProjectionLines(context, vector, color) {
+            context.strokeStyle = color;
+            context.lineWidth = 1.5;
+            context.setLineDash([5, 5]);
+
+            const endPoint = toCanvasCoords(vector[0], vector[1]);
+            const projXPoint = toCanvasCoords(vector[0], 0);
+            const projYPoint = toCanvasCoords(0, vector[1]);
+
+            context.beginPath();
+            context.moveTo(endPoint.cx, endPoint.cy);
+            context.lineTo(projXPoint.cx, endPoint.cy);
+            context.stroke();
+
+            context.beginPath();
+            context.moveTo(endPoint.cx, endPoint.cy);
+            context.lineTo(endPoint.cx, projYPoint.cy);
+            context.stroke();
+
+            context.setLineDash([]);
+        }
+
+        /**
+         * Checks if mouse coordinates are near a given canvas point.
+         * @param {number} mouseCx - Mouse X coordinate on canvas.
+         * @param {number} mouseCy - Mouse Y coordinate on canvas.
+         * @param {object} targetCanvasCoords - Target point {cx, cy} on canvas.
+         * @param {number} pixelThreshold - Distance threshold in pixels for "near".
+         * @returns {boolean} - True if mouse is near the target point.
+         */
+        function isNearCanvasPoint(mouseCx, mouseCy, targetCanvasCoords, pixelThreshold) {
+            const dx = mouseCx - targetCanvasCoords.cx;
+            const dy = mouseCy - targetCanvasCoords.cy;
+            return Math.sqrt(dx * dx + dy * dy) < pixelThreshold;
+        }
+
+        /**
+         * Renders the matrix pills in the cascade display area.
+         */
+        function renderMatrixCascade() {
+            matrixCascadePills.innerHTML = ''; // Clear existing pills
+
+            if (matrixCascade.length === 0) {
+                matrixCascadePills.innerHTML = '<p class="text-gray-500 text-sm">No matrices added yet. Start with an Identity Matrix!</p>';
+            }
+
+            matrixCascade.forEach((matrix, index) => {
+                const pill = document.createElement('div');
+                pill.className = `matrix-pill ${matrix.isInverse ? 'inverse' : ''}`;
+                pill.dataset.id = matrix.id;
+
+                const matrixValues = matrix.values;
+                
+                pill.innerHTML = `
+                    <div class="matrix-pill-content">
+                        <p class="font-semibold text-gray-700">M<sub>${index + 1}</sub>${matrix.isInverse ? ' (Inverse)' : ''}</p>
+                        <div class="matrix-pill-values">
+                            <span>[${matrixValues[0][0].toFixed(3)}</span><span>${matrixValues[0][1].toFixed(3)}]</span>
+                            <span>[${matrixValues[1][0].toFixed(3)}</span><span>${matrixValues[1][1].toFixed(3)}]</span>
+                        </div>
+                    </div>
+                    <div class="matrix-pill-actions">
+                        <button class="duplicate-btn" data-id="${matrix.id}" title="Duplicate Matrix">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M4 1.5H14a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 3.5 12V2a.5.5 0 0 1 .5-.5zM14 2H4v10h10V2z"/>
+                                <path d="M2 3.5a.5.5 0 0 1 .5-.5H12a.5.5 0 0 1 .5.5V13a.5.5 0 0 1-.5.5H2.5a.5.5 0 0 1-.5-.5V3.5zM2.5 4H12v9H2.5V4z"/>
+                            </svg>
+                        </button>
+                        <button class="edit-btn" data-id="${matrix.id}" title="Edit Matrix">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.121l6.04-6.04zm-2.76-3.695L13.19 1.714l-1.01-1.01-.757.757-.707-.707.707-.707 1.01-1.01z"/>
+                                <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/>
+                            </svg>
+                        </button>
+                        <button class="delete-btn" data-id="${matrix.id}" title="Delete Matrix">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.5a.5.5 0 0 0 0 1h.5V14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3.5h.5a.5.5 0 0 0 0-1H11ZM4.5 3h7A.5.5 0 0 1 12 3.5v10.5a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V3.5a.5.5 0 0 1 .5-.5Z"/>
+                            </svg>
+                        </button>
+                    </div>
+                `;
+                matrixCascadePills.appendChild(pill);
+            });
+
+            // Add event listeners to new buttons
+            matrixCascadePills.querySelectorAll('.duplicate-btn').forEach(button => {
+                button.addEventListener('click', (e) => duplicateMatrix(e.currentTarget.dataset.id));
+            });
+            matrixCascadePills.querySelectorAll('.edit-btn').forEach(button => {
+                button.addEventListener('click', (e) => editMatrix(e.currentTarget.dataset.id));
+            });
+            matrixCascadePills.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', (e) => deleteMatrix(e.currentTarget.dataset.id));
+            });
+        }
+
+        /**
+         * Updates the editor input fields based on the currentEditorMatrixOriginalValues
+         * and currentEditorIsInverse state.
+         */
+        function updateEditorInputsFromState() {
+            hideMessage(); // Clear any existing messages
+            if (currentEditorIsInverse) {
+                const inverse = calculateInverse(currentEditorMatrixOriginalValues);
+                if (inverse) {
+                    m00Input.value = inverse[0][0].toFixed(3); // Truncate to 3 decimal places
+                    m01Input.value = inverse[0][1].toFixed(3);
+                    m10Input.value = inverse[1][0].toFixed(3);
+                    m11Input.value = inverse[1][1].toFixed(3);
+                } else {
+                    // If inverse is singular, revert state and display original values
+                    currentEditorIsInverse = false; // Cannot be inverse if singular
+                    m00Input.value = currentEditorMatrixOriginalValues[0][0].toFixed(3);
+                    m01Input.value = currentEditorMatrixOriginalValues[0][1].toFixed(3);
+                    m10Input.value = currentEditorMatrixOriginalValues[1][0].toFixed(3);
+                    m11Input.value = currentEditorMatrixOriginalValues[1][1].toFixed(3);
+                    showMessage("Cannot compute inverse: Matrix is singular (determinant is zero or near zero). Displaying original values.", "error");
+                }
+            } else {
+                m00Input.value = currentEditorMatrixOriginalValues[0][0].toFixed(3);
+                m01Input.value = currentEditorMatrixOriginalValues[0][1].toFixed(3);
+                m10Input.value = currentEditorMatrixOriginalValues[1][0].toFixed(3);
+                m11Input.value = currentEditorMatrixOriginalValues[1][1].toFixed(3);
+            }
+        }
+
+        /**
+         * Resets the matrix editor to "Add New Matrix" mode.
+         */
+        function resetEditor() {
+            editingMatrixId = null;
+            editorTitle.innerHTML = 'Define New Matrix M<sub>i</sub>:'; // Use innerHTML for subscript
+            actionButton.textContent = 'Add Matrix to Cascade';
+            actionButton.removeEventListener('click', updateMatrix); // Remove old listener
+            actionButton.addEventListener('click', addMatrix); // Add new listener
+            cancelEditButton.classList.add('hidden');
+            
+            currentEditorMatrixOriginalValues = [[1, 0], [0, 1]]; // Reset original values to Identity
+            currentEditorIsInverse = false; // Reset inverse state
+            updateEditorInputsFromState(); // Update inputs based on reset state
+            hideMessage(); // Hide any error messages
+        }
+
+        /**
+         * Adds a new matrix to the cascade from the current editor values.
+         */
+        function addMatrix() {
+            const m00 = parseFloat(m00Input.value);
+            const m01 = parseFloat(m01Input.value);
+            const m10 = parseFloat(m10Input.value);
+            const m11 = parseFloat(m11Input.value);
+
+            const newMatrix = {
+                id: generateUniqueId(),
+                values: [[m00, m01], [m10, m11]], // Store the current input values as the original
+                isInverse: currentEditorIsInverse // Use the editor's current inverse state
+            };
+
+            matrixCascade.push(newMatrix);
+            renderMatrixCascade();
+            drawScene();
+            resetEditor(); // Reset editor for next new matrix
+        }
+
+        /**
+         * Populates the editor with values of a matrix selected for editing.
+         * @param {string} id - The ID of the matrix to edit.
+         */
+        function editMatrix(id) {
+            const matrixToEdit = matrixCascade.find(m => m.id === id);
+            if (matrixToEdit) {
+                editingMatrixId = id;
+                editorTitle.innerHTML = `Edit Matrix M<sub>${matrixCascade.indexOf(matrixToEdit) + 1}</sub>:`; // Use innerHTML for subscript
+                actionButton.textContent = 'Update Matrix in Cascade';
+                actionButton.removeEventListener('click', addMatrix); // Remove add listener
+                actionButton.addEventListener('click', updateMatrix); // Add update listener
+                cancelEditButton.classList.remove('hidden');
+
+                currentEditorMatrixOriginalValues = JSON.parse(JSON.stringify(matrixToEdit.values)); // Deep copy original values
+                currentEditorIsInverse = matrixToEdit.isInverse; // Set editor inverse state from stored matrix
+                updateEditorInputsFromState(); // Update inputs based on loaded state
+                hideMessage(); // Hide any error messages
+            }
+        }
+
+        /**
+         * Updates the matrix currently being edited in the cascade.
+         */
+        function updateMatrix() {
+            const matrixIndex = matrixCascade.findIndex(m => m.id === editingMatrixId);
+            if (matrixIndex !== -1) {
+                const m00 = parseFloat(m00Input.value);
+                const m01 = parseFloat(m01Input.value);
+                const m10 = parseFloat(m10Input.value);
+                const m11 = parseFloat(m11Input.value);
+
+                // Update the original values stored in the cascade based on editor's current state
+                // If editor is showing inverse, we need to calculate the original from that inverse
+                if (currentEditorIsInverse) {
+                    const inverseOfCurrentInput = calculateInverse([[m00,m01],[m10,m11]]);
+                    if (inverseOfCurrentInput) {
+                        matrixCascade[matrixIndex].values = inverseOfCurrentInput; // Store the "original" form
+                    } else {
+                        showMessage("Cannot update: Current values in editor are singular, cannot revert to original. Please adjust values.", "error");
+                        return; // Prevent update if it would store a singular inverse
+                    }
+                } else {
+                    matrixCascade[matrixIndex].values = [[m00, m01], [m10, m11]];
+                }
+                
+                matrixCascade[matrixIndex].isInverse = currentEditorIsInverse; // Update inverse state
+
+                renderMatrixCascade();
+                drawScene();
+                resetEditor();
+            }
+        }
+
+        /**
+         * Deletes a matrix from the cascade.
+         * @param {string} id - The ID of the matrix to delete.
+         */
+        function deleteMatrix(id) {
+            matrixCascade = matrixCascade.filter(m => m.id !== id);
+            renderMatrixCascade();
+            drawScene();
+            if (editingMatrixId === id) { // If the deleted matrix was being edited, reset editor
+                resetEditor();
+            }
+        }
+
+        /**
+         * Duplicates a matrix and adds it to the cascade.
+         * @param {string} id - The ID of the matrix to duplicate.
+         */
+        function duplicateMatrix(id) {
+            const matrixToDuplicate = matrixCascade.find(m => m.id === id);
+            if (matrixToDuplicate) {
+                const newMatrix = {
+                    id: generateUniqueId(),
+                    values: JSON.parse(JSON.stringify(matrixToDuplicate.values)), // Deep copy values
+                    isInverse: matrixToDuplicate.isInverse // Copy inverse state
+                };
+                matrixCascade.push(newMatrix);
+                renderMatrixCascade();
+                drawScene();
+                showMessage("Matrix duplicated!", "info");
+            }
+        }
+
+        /**
+         * Computes the inverse of the current matrix in the input fields and displays it,
+         * also toggling the internal currentEditorIsInverse state.
+         */
+        function computeAndDisplayInverse() {
+            // Get the current values from the input fields
+            const currentInputMatrix = [
+                [parseFloat(m00Input.value), parseFloat(m01Input.value)],
+                [parseFloat(m10Input.value), parseFloat(m11Input.value)]
+            ];
+
+            // If we are currently displaying the original, try to compute its inverse
+            // If we are currently displaying the inverse, we want to go back to the original
+            // So, we always try to compute the inverse of the *original* values.
+            const potentialInverse = calculateInverse(currentEditorMatrixOriginalValues);
+
+            if (potentialInverse) {
+                currentEditorIsInverse = !currentEditorIsInverse; // Toggle the state
+                updateEditorInputsFromState(); // Update inputs based on the new state
+                showMessage(currentEditorIsInverse ? "Inverse computed and displayed." : "Displaying original matrix.", "info");
+            } else {
+                showMessage("Cannot compute inverse: Matrix is singular (determinant is zero or near zero).", "error");
+                // Do not toggle currentEditorIsInverse if it's singular
+            }
+            drawScene(); // Redraw scene to reflect any cascade changes if in edit mode
+        }
+
+
+        /**
+         * Draws the entire scene: original grid/vectors and transformed grid/vectors.
+         */
+        function drawScene() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Calculate the cumulative transformation matrix
+            // If we have matrices M1, M2, M3 in the cascade, and we want to apply M1, then M2, then M3
+            // to a vector V, the operation is M3 * M2 * M1 * V.
+            // So, the cumulative matrix should be built by multiplying the new matrix on the LEFT.
+            let cumulativeMatrix = [
+                [1, 0],
+                [0, 1]
+            ]; // Start with Identity Matrix
+
+            matrixCascade.forEach(matrixObj => {
+                let currentMatrix = matrixObj.values;
+                if (matrixObj.isInverse) {
+                    const inverse = calculateInverse(currentMatrix);
+                    if (inverse) {
+                        currentMatrix = inverse;
+                    } else {
+                        // If an inverse cannot be calculated, treat it as identity or skip
+                        console.warn(`Skipping singular inverse matrix in cascade: ${matrixObj.id}`);
+                        return; // Skip this matrix in the cascade
+                    }
+                }
+                // Multiply currentMatrix on the LEFT of the cumulativeMatrix
+                cumulativeMatrix = multiplyMatrices(currentMatrix, cumulativeMatrix);
+            });
+
+            // Define original basis vectors
+            const iHat = [1, 0];
+            const jHat = [0, 1];
+
+            // Transform basis vectors using the cumulative matrix
+            const transformedIHat = multiplyMatrixVector(cumulativeMatrix, iHat);
+            const transformedJHat = multiplyMatrixVector(cumulativeMatrix, jHat);
+
+            // --- Draw Original Space (Blue) ---
+            if (showOriginalCheckbox.checked) {
+                drawGrid(ctx, '#93c5fd', 0.75);
+                drawAxes(ctx, '#60a5fa', 2, null, true);
+                drawTicksAndLabels(ctx, '#60a5fa', null);
+                drawVector(ctx, iHat, '#3b82f6', 4, 'X');
+                drawVector(ctx, jHat, '#3b82f6', 4, 'Y');
+
+                if (hoveredVector === 'X') {
+                    drawProjectionLines(ctx, iHat, '#3b82f6');
+                } else if (hoveredVector === 'Y') {
+                    drawProjectionLines(ctx, jHat, '#3b82f6');
+                }
+            }
+
+            // --- Draw Transformed Space (Red) ---
+            if (showTransformedCheckbox.checked) {
+                drawGrid(ctx, '#f87171', 0.5, cumulativeMatrix);
+                drawAxes(ctx, '#f87171', 1.5, cumulativeMatrix);
+                drawTicksAndLabels(ctx, '#f87171', cumulativeMatrix);
+                drawVector(ctx, transformedIHat, '#dc2626', 4, 'X1');
+                drawVector(ctx, transformedJHat, '#dc2626', 4, 'X2');
+
+                if (hoveredVector === 'X1') {
+                    drawProjectionLines(ctx, transformedIHat, '#dc2626');
+                } else if (hoveredVector === 'X2') {
+                    drawProjectionLines(ctx, transformedJHat, '#dc2626');
+                }
+            }
+        }
+
+        // Event listeners for editor buttons and inputs
+        actionButton.addEventListener('click', addMatrix); // Default action is add
+        cancelEditButton.addEventListener('click', resetEditor);
+        computeInverseBtn.addEventListener('click', computeAndDisplayInverse); // New event listener for inverse button
+
+        // Event listeners for checkboxes
+        showOriginalCheckbox.addEventListener('change', drawScene);
+        showTransformedCheckbox.addEventListener('change', drawScene);
+
+        // Pan functionality
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            canvas.classList.add('grabbing');
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - lastMouseX;
+                const deltaY = e.clientY - lastMouseY;
+                offsetX += deltaX;
+                offsetY += deltaY;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            } else {
+                const mouseCanvasX = e.clientX - canvas.getBoundingClientRect().left;
+                const mouseCanvasY = e.clientY - canvas.getBoundingClientRect().top;
+                let newHoveredVector = null;
+
+                // Calculate cumulative matrix for hover detection
+                let currentCumulativeMatrix = [
+                    [1, 0],
+                    [0, 1]
+                ];
+                matrixCascade.forEach(matrixObj => {
+                    let m = matrixObj.values;
+                    if (matrixObj.isInverse) {
+                        const inv = calculateInverse(m);
+                        if (inv) m = inv;
+                    }
+                    // Multiply currentMatrix on the LEFT of the cumulativeMatrix
+                    currentCumulativeMatrix = multiplyMatrices(m, currentCumulativeMatrix);
+                });
+
+                const iHat = [1, 0];
+                const jHat = [0, 1];
+                const transformedIHat = multiplyMatrixVector(currentCumulativeMatrix, iHat);
+                const transformedJHat = multiplyMatrixVector(currentCumulativeMatrix, jHat);
+
+                const hoverThresholdPixels = 20;
+
+                if (showOriginalCheckbox.checked) {
+                    const endIHatCanvas = toCanvasCoords(iHat[0], iHat[1]);
+                    const endJHatCanvas = toCanvasCoords(jHat[0], jHat[1]);
+                    if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endIHatCanvas, hoverThresholdPixels)) {
+                        newHoveredVector = 'X';
+                    } else if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endJHatCanvas, hoverThresholdPixels)) {
+                        newHoveredVector = 'Y';
+                    }
+                }
+                if (showTransformedCheckbox.checked && newHoveredVector === null) {
+                    const endTransformedIHatCanvas = toCanvasCoords(transformedIHat[0], transformedIHat[1]);
+                    const endTransformedJHatCanvas = toCanvasCoords(transformedJHat[0], transformedJHat[1]);
+                    if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endTransformedIHatCanvas, hoverThresholdPixels)) {
+                        newHoveredVector = 'X1';
+                    } else if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endTransformedJHatCanvas, hoverThresholdPixels)) {
+                        newHoveredVector = 'X2';
+                    }
+                }
+
+                if (newHoveredVector !== hoveredVector) {
+                    hoveredVector = newHoveredVector;
+                }
+            }
+            drawScene();
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+            canvas.classList.remove('grabbing');
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+            canvas.classList.remove('grabbing');
+            if (hoveredVector !== null) {
+                hoveredVector = null;
+                drawScene();
+            }
+        });
+
+        // Zoom functionality
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+
+            const mouseX = e.clientX - canvas.getBoundingClientRect().left;
+            const mouseY = e.clientY - canvas.getBoundingClientRect().top;
+
+            const mouseCartesianX = (mouseX - centerX - offsetX) / scale;
+            const mouseCartesianY = (centerY - mouseY + offsetY) / scale;
+
+            const zoomFactor = 1.1;
+            let newScale = scale;
+
+            if (e.deltaY < 0) {
+                newScale *= zoomFactor;
+            } else {
+                newScale /= zoomFactor;
+            }
+
+            newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+
+            offsetX = mouseX - mouseCartesianX * newScale - centerX;
+            offsetY = mouseY - (centerY - mouseCartesianY * newScale);
+
+            scale = newScale;
+            drawScene();
+        });
+
+        // Sidebar toggle functionality
+        sidebarToggleBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            if (sidebar.classList.contains('collapsed')) {
+                sidebarToggleBtn.innerHTML = '☰';
+            } else {
+                sidebarToggleBtn.innerHTML = 'X';
+            }
+            setTimeout(() => {
+                initializeCanvas();
+                drawScene();
+            }, 300);
+        });
+
+        // Initial setup
+        window.onload = () => {
+            initializeCanvas();
+            // Add an initial Identity Matrix pill
+            matrixCascade.push({ id: generateUniqueId(), values: [[1, 0], [0, 1]], isInverse: false });
+            renderMatrixCascade();
+            drawScene();
+        };
+
+        window.addEventListener('resize', () => {
+            initializeCanvas();
+            drawScene();
+        });
+    </script>
+</body>
+</html>
+
