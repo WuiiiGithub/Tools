@@ -182,6 +182,51 @@
             box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3);
         }
 
+        /* New perspective toggle button */
+        .perspective-toggle-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 48px; /* Fixed width for icon button */
+            height: 48px; /* Fixed height for icon button */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: none;
+            border-radius: 50%; /* Make it round */
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            z-index: 20;
+            transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
+        }
+        .perspective-toggle-btn svg {
+            width: 24px; /* Icon size */
+            height: 24px;
+            color: white; /* White icon */
+        }
+        .perspective-toggle-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+        .perspective-toggle-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        /* Specific colors for perspective modes */
+        .perspective-toggle-btn.blue-perspective {
+            background-color: #3b82f6; /* Blue for original XY view */
+        }
+        .perspective-toggle-btn.blue-perspective:hover {
+            background-color: #2563eb;
+        }
+        .perspective-toggle-btn.red-perspective {
+            background-color: #ef4444; /* Red for transformed X1 view */
+        }
+        .perspective-toggle-btn.red-perspective:hover {
+            background-color: #dc2626;
+        }
+
+
         /* Responsive adjustments for smaller screens */
         @media (max-width: 768px) {
             .sidebar {
@@ -198,6 +243,16 @@
                 right: 10px;
                 padding: 8px 12px; /* Smaller padding */
                 font-size: 1rem;
+            }
+            .perspective-toggle-btn {
+                bottom: 10px;
+                right: 10px;
+                width: 40px; /* Smaller size for mobile */
+                height: 40px;
+            }
+            .perspective-toggle-btn svg {
+                width: 20px;
+                height: 20px;
             }
         }
 
@@ -258,11 +313,11 @@
             color: white; /* Make SVG icons white */
         }
         .matrix-pill-actions .duplicate-btn {
-            background-color: #34d399; /* Green for duplicate */
+            background-color: #3b82f6; /* Blue for duplicate */
             border: none;
         }
         .matrix-pill-actions .duplicate-btn:hover {
-            background-color: #10b981;
+            background-color: #2563eb;
         }
         .matrix-pill-actions .edit-btn {
             background-color: #3b82f6; /* Blue */
@@ -381,6 +436,14 @@
         <button id="sidebarToggleBtn" class="global-sidebar-toggle-btn">
             ☰ <!-- Hamburger icon -->
         </button>
+
+        <!-- New perspective toggle button -->
+        <button id="perspectiveToggleBtn" class="perspective-toggle-btn blue-perspective" title="Current View: Original XY Basis">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
+                <path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>
+            </svg>
+        </button>
     </div>
 
     <script>
@@ -409,6 +472,7 @@
         // Get sidebar elements
         const sidebar = document.getElementById('sidebar');
         const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+        const perspectiveToggleBtn = document.getElementById('perspectiveToggleBtn'); // New perspective button
 
         // Define canvas center, initial scale, pan offsets, and zoom limits
         let centerX, centerY;
@@ -424,9 +488,9 @@
         const MAX_SCALE = 200;
 
         // Base font sizes for dynamic scaling
-        const VECTOR_LABEL_BASE_FONT_SIZE = 16;
+        const VECTOR_LABEL_BASE_FONT_SIZE = 14;
         const AXIS_LABEL_BASE_FONT_SIZE = 18;
-        const TICK_LABEL_BASE_FONT_SIZE = 14;
+        const TICK_LABEL_BASE_FONT_SIZE = 12;
 
         // Array to store the cascade of matrices
         let matrixCascade = [];
@@ -435,6 +499,9 @@
         // State for the editor's current matrix (original values and whether it's currently showing inverse)
         let currentEditorMatrixOriginalValues = [[1, 0], [0, 1]];
         let currentEditorIsInverse = false;
+
+        // Perspective mode state: 'original' or 'transformed'
+        let perspectiveMode = 'original'; // Default to original XY basis view
 
         /**
          * Displays a message in the message box.
@@ -935,6 +1002,20 @@
         }
 
         /**
+         * Draws a small black dot at the origin.
+         * @param {CanvasRenderingContext2D} context - The 2D rendering context.
+         * @param {string} color - The color of the dot.
+         */
+        function drawOriginDot(context, color) {
+            const originCanvas = toCanvasCoords(0, 0);
+            context.beginPath();
+            context.arc(originCanvas.cx, originCanvas.cy, 5, 0, Math.PI * 2); // 5 pixel radius
+            context.fillStyle = color;
+            context.fill();
+            context.closePath();
+        }
+
+        /**
          * Renders the matrix pills in the cascade display area.
          */
         function renderMatrixCascade() {
@@ -1207,43 +1288,78 @@
                 cumulativeMatrix = multiplyMatrices(currentMatrix, cumulativeMatrix);
             });
 
+            // Determine the view transformation matrix based on perspective mode
+            let viewTransformMatrix = [
+                [1, 0],
+                [0, 1]
+            ]; // Identity by default
+
+            // Calculate the transformed IHat based on the cumulative matrix
+            const transformedIHatGlobal = multiplyMatrixVector(cumulativeMatrix, [1, 0]);
+
+            if (perspectiveMode === 'transformed') {
+                // Calculate the angle needed to rotate transformedIHatGlobal to horizontal
+                const angleOfTransformedIHat = Math.atan2(transformedIHatGlobal[1], transformedIHatGlobal[0]);
+                const cosTheta = Math.cos(-angleOfTransformedIHat);
+                const sinTheta = Math.sin(-angleOfTransformedIHat);
+                viewTransformMatrix = [
+                    [cosTheta, -sinTheta],
+                    [sinTheta, cosTheta]
+                ];
+            }
+
             // Define original basis vectors
             const iHat = [1, 0];
             const jHat = [0, 1];
 
-            // Transform basis vectors using the cumulative matrix
-            const transformedIHat = multiplyMatrixVector(cumulativeMatrix, iHat);
-            const transformedJHat = multiplyMatrixVector(cumulativeMatrix, jHat);
+            // Apply viewTransformMatrix to all elements before drawing
+            // Original space vectors transformed by viewTransformMatrix
+            const iHatView = multiplyMatrixVector(viewTransformMatrix, iHat);
+            const jHatView = multiplyMatrixVector(viewTransformMatrix, jHat);
+
+            // Transformed space vectors (already transformed by cumulativeMatrix)
+            // now further transformed by viewTransformMatrix
+            const transformedIHatView = multiplyMatrixVector(viewTransformMatrix, transformedIHatGlobal);
+            const transformedJHatView = multiplyMatrixVector(viewTransformMatrix, multiplyMatrixVector(cumulativeMatrix, jHat));
+
 
             // --- Draw Original Space (Blue) ---
             if (showOriginalCheckbox.checked) {
-                drawGrid(ctx, '#93c5fd', 0.75);
-                drawAxes(ctx, '#60a5fa', 2, null, true);
-                drawTicksAndLabels(ctx, '#60a5fa', null);
-                drawVector(ctx, iHat, '#3b82f6', 4, 'X');
-                drawVector(ctx, jHat, '#3b82f6', 4, 'Y');
+                // For drawing the original grid/axes/vectors, they are transformed by viewTransformMatrix
+                drawGrid(ctx, '#93c5fd', 0.75, viewTransformMatrix);
+                drawAxes(ctx, '#60a5fa', 2, viewTransformMatrix, true); // Pass viewTransformMatrix for axes
+                drawTicksAndLabels(ctx, '#60a5fa', viewTransformMatrix); // Pass viewTransformMatrix for ticks
+                drawVector(ctx, iHatView, '#3b82f6', 4, 'X');
+                drawVector(ctx, jHatView, '#3b82f6', 4, 'Y');
 
                 if (hoveredVector === 'X') {
-                    drawProjectionLines(ctx, iHat, '#3b82f6');
+                    drawProjectionLines(ctx, iHatView, '#3b82f6');
                 } else if (hoveredVector === 'Y') {
-                    drawProjectionLines(ctx, jHat, '#3b82f6');
+                    drawProjectionLines(ctx, jHatView, '#3b82f6');
                 }
             }
 
             // --- Draw Transformed Space (Red) ---
             if (showTransformedCheckbox.checked) {
-                drawGrid(ctx, '#f87171', 0.5, cumulativeMatrix);
-                drawAxes(ctx, '#f87171', 1.5, cumulativeMatrix);
-                drawTicksAndLabels(ctx, '#f87171', cumulativeMatrix);
-                drawVector(ctx, transformedIHat, '#dc2626', 4, 'X1');
-                drawVector(ctx, transformedJHat, '#dc2626', 4, 'X2');
+                // For drawing the transformed grid/axes/vectors, they are transformed by (viewTransformMatrix * cumulativeMatrix)
+                // We can pass (viewTransformMatrix * cumulativeMatrix) as the transformMatrix to these functions.
+                const combinedTransformMatrix = multiplyMatrices(viewTransformMatrix, cumulativeMatrix);
+                drawGrid(ctx, '#f87171', 0.5, combinedTransformMatrix);
+                drawAxes(ctx, '#f87171', 1.5, combinedTransformMatrix);
+                drawTicksAndLabels(ctx, '#f87171', combinedTransformMatrix);
+                drawVector(ctx, transformedIHatView, '#dc2626', 4, 'X1');
+                drawVector(ctx, transformedJHatView, '#dc2626', 4, 'X2');
 
                 if (hoveredVector === 'X1') {
-                    drawProjectionLines(ctx, transformedIHat, '#dc2626');
+                    drawProjectionLines(ctx, transformedIHatView, '#dc2626');
                 } else if (hoveredVector === 'X2') {
-                    drawProjectionLines(ctx, transformedJHat, '#dc2626');
+                    drawProjectionLines(ctx, transformedJHatView, '#dc2626');
                 }
             }
+
+            // --- Draw Origin Dot ---
+            // The origin dot is always at (0,0) in Cartesian, so we apply viewTransformMatrix to it
+            drawOriginDot(ctx, '#000000');
         }
 
         // Event listeners for editor buttons and inputs
@@ -1254,6 +1370,23 @@
         // Event listeners for checkboxes
         showOriginalCheckbox.addEventListener('change', drawScene);
         showTransformedCheckbox.addEventListener('change', drawScene);
+
+        // Perspective toggle button event listener
+        perspectiveToggleBtn.addEventListener('click', () => {
+            if (perspectiveMode === 'original') {
+                perspectiveMode = 'transformed';
+                perspectiveToggleBtn.classList.remove('blue-perspective');
+                perspectiveToggleBtn.classList.add('red-perspective');
+                perspectiveToggleBtn.title = 'Current View: Transformed X1 Basis';
+            } else {
+                perspectiveMode = 'original';
+                perspectiveToggleBtn.classList.remove('red-perspective');
+                perspectiveToggleBtn.classList.add('blue-perspective');
+                perspectiveToggleBtn.title = 'Current View: Original XY Basis';
+            }
+            drawScene(); // Redraw with new perspective
+        });
+
 
         // Pan functionality
         canvas.addEventListener('mousedown', (e) => {
@@ -1276,7 +1409,7 @@
                 const mouseCanvasY = e.clientY - canvas.getBoundingClientRect().top;
                 let newHoveredVector = null;
 
-                // Calculate cumulative matrix for hover detection
+                // Calculate cumulative matrix
                 let currentCumulativeMatrix = [
                     [1, 0],
                     [0, 1]
@@ -1287,20 +1420,46 @@
                         const inv = calculateInverse(m);
                         if (inv) m = inv;
                     }
-                    // Multiply currentMatrix on the LEFT of the cumulativeMatrix
                     currentCumulativeMatrix = multiplyMatrices(m, currentCumulativeMatrix);
                 });
 
+                // Determine the view transformation matrix for hover detection
+                let hoverViewTransformMatrix = [
+                    [1, 0],
+                    [0, 1]
+                ];
+
+                const transformedIHatGlobalForHover = multiplyMatrixVector(currentCumulativeMatrix, [1, 0]);
+
+                if (perspectiveMode === 'transformed') {
+                    const angleOfTransformedIHat = Math.atan2(transformedIHatGlobalForHover[1], transformedIHatGlobalForHover[0]);
+                    const cosTheta = Math.cos(-angleOfTransformedIHat);
+                    const sinTheta = Math.sin(-angleOfTransformedIHat);
+                    hoverViewTransformMatrix = [
+                        [cosTheta, -sinTheta],
+                        [sinTheta, cosTheta]
+                    ];
+                }
+
                 const iHat = [1, 0];
                 const jHat = [0, 1];
-                const transformedIHat = multiplyMatrixVector(currentCumulativeMatrix, iHat);
-                const transformedJHat = multiplyMatrixVector(currentCumulativeMatrix, jHat);
+                
+                // Transformed basis vectors in the *original* coordinate system
+                const transformedIHatGlobal = multiplyMatrixVector(currentCumulativeMatrix, iHat);
+                const transformedJHatGlobal = multiplyMatrixVector(currentCumulativeMatrix, jHat);
+
+                // Apply hoverViewTransformMatrix to the vectors for hover detection
+                const iHatHover = multiplyMatrixVector(hoverViewTransformMatrix, iHat);
+                const jHatHover = multiplyMatrixVector(hoverViewTransformMatrix, jHat);
+                const transformedIHatHover = multiplyMatrixVector(hoverViewTransformMatrix, transformedIHatGlobal);
+                const transformedJHatHover = multiplyMatrixVector(hoverViewTransformMatrix, transformedJHatGlobal);
+
 
                 const hoverThresholdPixels = 20;
 
                 if (showOriginalCheckbox.checked) {
-                    const endIHatCanvas = toCanvasCoords(iHat[0], iHat[1]);
-                    const endJHatCanvas = toCanvasCoords(jHat[0], jHat[1]);
+                    const endIHatCanvas = toCanvasCoords(iHatHover[0], iHatHover[1]);
+                    const endJHatCanvas = toCanvasCoords(jHatHover[0], jHatHover[1]);
                     if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endIHatCanvas, hoverThresholdPixels)) {
                         newHoveredVector = 'X';
                     } else if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endJHatCanvas, hoverThresholdPixels)) {
@@ -1308,8 +1467,8 @@
                     }
                 }
                 if (showTransformedCheckbox.checked && newHoveredVector === null) {
-                    const endTransformedIHatCanvas = toCanvasCoords(transformedIHat[0], transformedIHat[1]);
-                    const endTransformedJHatCanvas = toCanvasCoords(transformedJHat[0], transformedJHat[1]);
+                    const endTransformedIHatCanvas = toCanvasCoords(transformedIHatHover[0], transformedIHatHover[1]);
+                    const endTransformedJHatCanvas = toCanvasCoords(transformedJHatHover[0], transformedJHatHover[1]);
                     if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endTransformedIHatCanvas, hoverThresholdPixels)) {
                         newHoveredVector = 'X1';
                     } else if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endTransformedJHatCanvas, hoverThresholdPixels)) {
