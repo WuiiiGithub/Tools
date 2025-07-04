@@ -371,6 +371,33 @@
             cursor: pointer;
             margin-left: auto;
         }
+
+        /* Info box for hovered vector */
+        #vectorInfoBox {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            padding: 10px 15px;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            pointer-events: none; /* Allow mouse events to pass through */
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            gap: 5px;
+            z-index: 30; /* Ensure it's above everything */
+        }
+        #vectorInfoBox.show {
+            display: flex;
+        }
+        #vectorInfoBox .original-coords {
+            color: #3b82f6; /* Blue */
+            font-weight: bold;
+        }
+        #vectorInfoBox .transformed-coords {
+            color: #dc2626; /* Red */
+            font-weight: bold;
+        }
     </style>
 </head>
 <body class="antialiased text-gray-800">
@@ -408,6 +435,26 @@
                 </div>
             </div>
 
+            <!-- Transform Mode Section -->
+            <div class="transform-mode-section flex flex-col gap-4 mt-6 p-4 bg-purple-50 rounded-lg shadow-md">
+                <label for="transformModeToggle" class="flex items-center gap-2 cursor-pointer font-semibold text-purple-800">
+                    <input type="checkbox" id="transformModeToggle" class="w-4 h-4 rounded-md border-gray-300 text-purple-600 shadow-sm focus:ring-purple-500">
+                    Enable Transform Mode
+                </label>
+                <div id="customVectorInputs" class="flex flex-col gap-2 hidden">
+                    <h3 class="text-lg font-medium text-purple-700">Vector in Transformed (X1, X2) Basis:</h3>
+                    <div class="flex gap-4">
+                        <label for="customVectorX" class="flex items-center gap-1">X1:
+                            <input type="number" id="customVectorX" value="1" step="0.1" class="w-20 p-2 border rounded-md text-center">
+                        </label>
+                        <label for="customVectorY" class="flex items-center gap-1">X2:
+                            <input type="number" id="customVectorY" value="1" step="0.1" class="w-20 p-2 border rounded-md text-center">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+
             <!-- Existing Checkboxes and Description -->
             <div class="checkbox-group mt-4">
                 <label for="showOriginal">
@@ -431,6 +478,7 @@
         <!-- Canvas container -->
         <div class="canvas-container">
             <canvas id="transformationCanvas"></canvas>
+            <div id="vectorInfoBox"></div>
         </div>
 
         <!-- New global toggle button for the sidebar -->
@@ -475,6 +523,13 @@
         const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
         const perspectiveToggleBtn = document.getElementById('perspectiveToggleBtn'); // New perspective button
 
+        // Get Transform Mode elements
+        const transformModeToggle = document.getElementById('transformModeToggle');
+        const customVectorInputsDiv = document.getElementById('customVectorInputs');
+        const customVectorXInput = document.getElementById('customVectorX');
+        const customVectorYInput = document.getElementById('customVectorY');
+        const vectorInfoBox = document.getElementById('vectorInfoBox');
+
         // Define canvas center, initial scale, pan offsets, and zoom limits
         let centerX, centerY;
         const INITIAL_SCALE = 50; // Reference scale for font sizing and tick calculation
@@ -483,7 +538,7 @@
         let offsetY = 0; // Pan offset Y
         let isDragging = false;
         let lastMouseX, lastMouseY;
-        let hoveredVector = null; // Stores the label of the currently hovered vector ('X', 'Y', 'x1', 'x2')
+        let hoveredVector = null; // Stores the label of the currently hovered vector ('X', 'Y', 'x1', 'x2', 'custom')
 
         const MIN_SCALE = 10;
         const MAX_SCALE = 200;
@@ -503,6 +558,10 @@
 
         // Perspective mode state: 'original' or 'transformed'
         let perspectiveMode = 'original'; // Default to original XY basis view
+
+        // Transform Mode state
+        let transformModeActive = false;
+        let customVectorInputCoords = [1, 1]; // Default custom vector input (interpreted as X1, X2 coords)
 
         /**
          * Displays a message in the message box.
@@ -684,7 +743,8 @@
                 context.fillStyle = color;
                 context.font = `bold ${dynamicFontSize}px Inter`;
 
-                const labelOffsetDist = dynamicFontSize * 1.5;
+                // Base offset distance for labels, scales with zoom
+                const labelOffsetDist = dynamicFontSize * 1.5; 
                 let labelX = endCanvas.cx;
                 let labelY = endCanvas.cy;
 
@@ -718,26 +778,25 @@
                         }
                         break;
                     case 'X2':
-                        const x2VerticalOffset = 35; // Increased vertical offset for X2 label
+                        // Position slightly perpendicular to the vector, scales with dynamicFontSize
+                        const perpendicularOffset = dynamicFontSize * 0.8; // Smaller offset for X2
+                        const offsetAngle = angle + Math.PI / 2; // Perpendicular angle (90 degrees counter-clockwise)
+                        labelX = endCanvas.cx + perpendicularOffset * Math.cos(offsetAngle);
+                        labelY = endCanvas.cy + perpendicularOffset * Math.sin(offsetAngle);
 
-                        // Position slightly beyond the tip, along the vector's direction
-                        labelX = endCanvas.cx + labelOffsetDist * Math.cos(angle);
-                        labelY = endCanvas.cy + labelOffsetDist * Math.sin(angle) - x2VerticalOffset; // Always move up on canvas
-
-                        // Adjust text alignment for better appearance based on quadrant
-                        context.textBaseline = 'bottom'; // Always draw text above the calculated labelY point
-
-                        if (angle > -Math.PI / 4 && angle <= Math.PI / 4) { // Right-ish
+                        // Adjust text alignment based on quadrant of the offset label position
+                        if (labelX > endCanvas.cx) { // Right of vector tip
                             context.textAlign = 'left';
-                        } else if (angle > Math.PI / 4 && angle <= 3 * Math.PI / 4) { // Up-ish
-                            context.textAlign = 'center';
-                        } else if (angle > 3 * Math.PI / 4 || angle <= -3 * Math.PI / 4) { // Left-ish
+                        } else { // Left of vector tip
                             context.textAlign = 'right';
-                        } else { // Down-ish
-                            context.textAlign = 'center';
+                        }
+                        if (labelY > endCanvas.cy) { // Below vector tip
+                            context.textBaseline = 'top';
+                        } else { // Above vector tip
+                            context.textBaseline = 'bottom';
                         }
                         break;
-                    default:
+                    default: // For custom vector label, if any
                         labelX = endCanvas.cx + labelOffsetDist * Math.cos(angle);
                         labelY = endCanvas.cy + labelOffsetDist * Math.sin(angle);
                         break;
@@ -1358,6 +1417,38 @@
                 }
             }
 
+            // --- Draw Custom Vector if Transform Mode is Active ---
+            if (transformModeActive) {
+                // customVectorInputCoords are interpreted as coordinates in the transformed (X1, X2) basis
+                const customVecInTransformedBasis = [
+                    parseFloat(customVectorXInput.value) || 0,
+                    parseFloat(customVectorYInput.value) || 0
+                ];
+
+                // Calculate the equivalent vector in the original (X, Y) basis
+                const vectorInOriginalBasis = multiplyMatrixVector(cumulativeMatrix, customVecInTransformedBasis);
+                
+                // Apply view transform to the vector in original basis for drawing
+                const vectorInOriginalBasisView = multiplyMatrixVector(viewTransformMatrix, vectorInOriginalBasis);
+                
+                drawVector(ctx, vectorInOriginalBasisView, '#8b5cf6', 4, null); // Purple color for custom vector
+
+                if (hoveredVector === 'custom') {
+                    const endPointCanvas = toCanvasCoords(vectorInOriginalBasisView[0], vectorInOriginalBasisView[1]);
+                    vectorInfoBox.style.left = `${endPointCanvas.cx + 10}px`;
+                    vectorInfoBox.style.top = `${endPointCanvas.cy + 10}px`;
+                    vectorInfoBox.innerHTML = `
+                        <span class="original-coords">In Transformed (X1, X2) Basis: (${customVecInTransformedBasis[0].toFixed(2)}, ${customVecInTransformedBasis[1].toFixed(2)})</span>
+                        <span class="transformed-coords">In Original (X, Y) Basis: (${vectorInOriginalBasis[0].toFixed(2)}, ${vectorInOriginalBasis[1].toFixed(2)})</span>
+                    `;
+                    vectorInfoBox.classList.add('show');
+                } else {
+                    vectorInfoBox.classList.remove('show');
+                }
+            } else {
+                vectorInfoBox.classList.remove('show');
+            }
+
             // --- Draw Origin Dot ---
             // The origin dot is always at (0,0) in Cartesian, so we apply viewTransformMatrix to it
             drawOriginDot(ctx, '#000000');
@@ -1386,6 +1477,28 @@
                 perspectiveToggleBtn.title = 'Current View: Original XY Basis';
             }
             drawScene(); // Redraw with new perspective
+        });
+
+        // Transform Mode toggle and input listeners
+        transformModeToggle.addEventListener('change', () => {
+            transformModeActive = transformModeToggle.checked;
+            if (transformModeActive) {
+                customVectorInputsDiv.classList.remove('hidden');
+            } else {
+                customVectorInputsDiv.classList.add('hidden');
+                hoveredVector = null; // Clear custom vector hover state
+            }
+            drawScene();
+        });
+
+        customVectorXInput.addEventListener('input', () => {
+            // Ensure inputs are numbers, default to 0 if invalid
+            customVectorInputCoords[0] = parseFloat(customVectorXInput.value) || 0;
+            drawScene();
+        });
+        customVectorYInput.addEventListener('input', () => {
+            customVectorInputCoords[1] = parseFloat(customVectorYInput.value) || 0;
+            drawScene();
         });
 
 
@@ -1454,6 +1567,14 @@
                 const jHatHover = multiplyMatrixVector(hoverViewTransformMatrix, jHat);
                 const transformedIHatHover = multiplyMatrixVector(hoverViewTransformMatrix, transformedIHatGlobal);
                 const transformedJHatHover = multiplyMatrixVector(hoverViewTransformMatrix, transformedJHatGlobal);
+                
+                // Calculate the custom vector in original basis for hover detection
+                const customVecInTransformedBasisForHover = [
+                    parseFloat(customVectorXInput.value) || 0,
+                    parseFloat(customVectorYInput.value) || 0
+                ];
+                const vectorInOriginalBasisForHover = multiplyMatrixVector(currentCumulativeMatrix, customVecInTransformedBasisForHover);
+                const customVectorHover = multiplyMatrixVector(hoverViewTransformMatrix, vectorInOriginalBasisForHover);
 
 
                 const hoverThresholdPixels = 20;
@@ -1476,6 +1597,14 @@
                         newHoveredVector = 'X2';
                     }
                 }
+                // Check for custom vector hover
+                if (transformModeActive && newHoveredVector === null) {
+                    const endCustomVectorCanvas = toCanvasCoords(customVectorHover[0], customVectorHover[1]);
+                    if (isNearCanvasPoint(mouseCanvasX, mouseCanvasY, endCustomVectorCanvas, hoverThresholdPixels)) {
+                        newHoveredVector = 'custom';
+                    }
+                }
+
 
                 if (newHoveredVector !== hoveredVector) {
                     hoveredVector = newHoveredVector;
