@@ -272,7 +272,17 @@
             color: #2c5282;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             position: relative; /* For actions absolute positioning */
+            cursor: grab; /* Indicate draggable */
         }
+        .matrix-pill.dragging {
+            opacity: 0.5; /* Visual feedback for dragging */
+            border: 2px dashed #3b82f6;
+        }
+        .matrix-pill.drag-over {
+            border: 2px solid #3b82f6; /* Visual feedback for drag target */
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+        }
+
         .matrix-pill-content {
             display: flex;
             flex-direction: column;
@@ -390,13 +400,50 @@
         #vectorInfoBox.show {
             display: flex;
         }
-        #vectorInfoBox .original-coords {
-            color: #3b82f6; /* Blue */
+        /* Corrected colors for hover info box */
+        #vectorInfoBox .transformed-basis-coords {
+            color: #dc2626; /* Red for X1, X2 basis */
             font-weight: bold;
         }
-        #vectorInfoBox .transformed-coords {
-            color: #dc2626; /* Red */
+        #vectorInfoBox .original-basis-coords {
+            color: #3b82f6; /* Blue for X, Y basis */
             font-weight: bold;
+        }
+
+        /* Styles for matrix enable/disable checkbox */
+        .matrix-pill .enable-toggle {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 1px solid #10b981; /* Green border */
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            cursor: pointer;
+            background-color: #d1fae5; /* Light green background */
+            transition: background-color 0.2s, border-color 0.2s;
+            z-index: 5; /* Above pill content but below action buttons */
+        }
+        .matrix-pill .enable-toggle:checked {
+            background-color: #10b981; /* Green when checked */
+            border-color: #059669;
+        }
+        .matrix-pill .enable-toggle:checked::after {
+            content: '✔';
+            display: block;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 12px;
+        }
+        /* Adjust pill content padding to make space for the checkbox */
+        .matrix-pill-content {
+            padding-left: 25px; /* Make space for the checkbox */
         }
     </style>
 </head>
@@ -405,7 +452,10 @@
     <div class="main-container">
         <!-- Sidebar for controls and matrix editor -->
         <div id="sidebar" class="sidebar">
-            <h1 class="text-2xl font-bold text-center text-gray-900 mb-4">Linear Transformation</h1>
+            <h1 class="text-2xl font-bold text-center text-gray-900">VisuoMatrix</h1>
+            <p style="text-align: justify">
+                We use linear transformation to visualize matrices and have fun with this. Happy Learning ✨
+            </p>
 
             <!-- Matrix Cascade Display -->
             <div class="cascade-section bg-gray-50 p-4 rounded-lg shadow-inner">
@@ -427,7 +477,7 @@
                 
                 <button id="computeInverseBtn" class="button button-secondary">Compute Inverse</button>
                 
-                <button id="actionButton" class="button">Add Matrix to Cascade</button>
+                <button id="actionButton" class="button">Add Matrix</button>
                 <button id="cancelEditButton" class="button button-secondary hidden">Cancel Edit</button>
                 <div id="messageBox" class="message-box">
                     <span></span>
@@ -442,7 +492,7 @@
                     Enable Transform Mode
                 </label>
                 <div id="customVectorInputs" class="flex flex-col gap-2 hidden">
-                    <h3 class="text-lg font-medium text-purple-700">Vector in Transformed (X1, X2) Basis:</h3>
+                    <h3 class="text-lg font-medium text-purple-700">Vector in <span class="text-red-700 font-bold">(X1, X2)</span> Basis:</h3>
                     <div class="flex gap-4">
                         <label for="customVectorX" class="flex items-center gap-1">X1:
                             <input type="number" id="customVectorX" value="1" step="0.1" class="w-20 p-2 border rounded-md text-center">
@@ -527,7 +577,7 @@
         const transformModeToggle = document.getElementById('transformModeToggle');
         const customVectorInputsDiv = document.getElementById('customVectorInputs');
         const customVectorXInput = document.getElementById('customVectorX');
-        const customVectorYInput = document.getElementById('customVectorY');
+        const customVectorYInput = document = document.getElementById('customVectorY');
         const vectorInfoBox = document.getElementById('vectorInfoBox');
 
         // Define canvas center, initial scale, pan offsets, and zoom limits
@@ -562,6 +612,9 @@
         // Transform Mode state
         let transformModeActive = false;
         let customVectorInputCoords = [1, 1]; // Default custom vector input (interpreted as X1, X2 coords)
+
+        // Drag and drop state for matrix pills
+        let draggedItem = null;
 
         /**
          * Displays a message in the message box.
@@ -1089,10 +1142,13 @@
                 const pill = document.createElement('div');
                 pill.className = `matrix-pill ${matrix.isInverse ? 'inverse' : ''}`;
                 pill.dataset.id = matrix.id;
+                pill.dataset.index = index; // Store index for drag and drop
+                pill.draggable = true; // Make draggable
 
                 const matrixValues = matrix.values;
                 
                 pill.innerHTML = `
+                    <input type="checkbox" class="enable-toggle" data-id="${matrix.id}" ${matrix.enabled ? 'checked' : ''} title="${matrix.enabled ? 'Disable Matrix' : 'Enable Matrix'}">
                     <div class="matrix-pill-content">
                         <p class="font-semibold text-gray-700">M<sub>${index + 1}</sub>${matrix.isInverse ? ' (Inverse)' : ''}</p>
                         <div class="matrix-pill-values">
@@ -1133,6 +1189,23 @@
             matrixCascadePills.querySelectorAll('.delete-btn').forEach(button => {
                 button.addEventListener('click', (e) => deleteMatrix(e.currentTarget.dataset.id));
             });
+            // Add event listener for enable/disable toggle
+            matrixCascadePills.querySelectorAll('.enable-toggle').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => toggleMatrixEnabled(e.currentTarget.dataset.id, e.currentTarget.checked));
+            });
+        }
+
+        /**
+         * Toggles the enabled state of a matrix in the cascade and redraws.
+         * @param {string} id - The ID of the matrix to toggle.
+         * @param {boolean} enabled - The new enabled state.
+         */
+        function toggleMatrixEnabled(id, enabled) {
+            const matrix = matrixCascade.find(m => m.id === id);
+            if (matrix) {
+                matrix.enabled = enabled;
+                drawScene(); // Redraw the scene to reflect the change
+            }
         }
 
         /**
@@ -1194,7 +1267,8 @@
             const newMatrix = {
                 id: generateUniqueId(),
                 values: [[m00, m01], [m10, m11]], // Store the current input values as the original
-                isInverse: currentEditorIsInverse // Use the editor's current inverse state
+                isInverse: currentEditorIsInverse, // Use the editor's current inverse state
+                enabled: true // New matrix is enabled by default
             };
 
             matrixCascade.push(newMatrix);
@@ -1280,7 +1354,8 @@
                 const newMatrix = {
                     id: generateUniqueId(),
                     values: JSON.parse(JSON.stringify(matrixToDuplicate.values)), // Deep copy values
-                    isInverse: matrixToDuplicate.isInverse // Copy inverse state
+                    isInverse: matrixToDuplicate.isInverse, // Copy inverse state
+                    enabled: matrixToDuplicate.enabled // Copy enabled state
                 };
                 matrixCascade.push(newMatrix);
                 renderMatrixCascade();
@@ -1324,15 +1399,16 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // Calculate the cumulative transformation matrix
-            // If we have matrices M1, M2, M3 in the cascade, and we want to apply M1, then M2, then M3
-            // to a vector V, the operation is M3 * M2 * M1 * V.
-            // So, the cumulative matrix should be built by multiplying the new matrix on the LEFT.
+            // Only include enabled matrices
             let cumulativeMatrix = [
                 [1, 0],
                 [0, 1]
             ]; // Start with Identity Matrix
 
             matrixCascade.forEach(matrixObj => {
+                if (!matrixObj.enabled) {
+                    return; // Skip disabled matrices
+                }
                 let currentMatrix = matrixObj.values;
                 if (matrixObj.isInverse) {
                     const inverse = calculateInverse(currentMatrix);
@@ -1438,8 +1514,8 @@
                     vectorInfoBox.style.left = `${endPointCanvas.cx + 10}px`;
                     vectorInfoBox.style.top = `${endPointCanvas.cy + 10}px`;
                     vectorInfoBox.innerHTML = `
-                        <span class="original-coords">In Transformed (X1, X2) Basis: (${customVecInTransformedBasis[0].toFixed(2)}, ${customVecInTransformedBasis[1].toFixed(2)})</span>
-                        <span class="transformed-coords">In Original (X, Y) Basis: (${vectorInOriginalBasis[0].toFixed(2)}, ${vectorInOriginalBasis[1].toFixed(2)})</span>
+                        <span class="transformed-basis-coords">(X1, X2) = (${customVecInTransformedBasis[0].toFixed(2)}, ${customVecInTransformedBasis[1].toFixed(2)})</span>
+                        <span class="original-basis-coords">(X, Y) = (${vectorInOriginalBasis[0].toFixed(2)}, ${vectorInOriginalBasis[1].toFixed(2)})</span>
                     `;
                     vectorInfoBox.classList.add('show');
                 } else {
@@ -1529,6 +1605,9 @@
                     [0, 1]
                 ];
                 matrixCascade.forEach(matrixObj => {
+                    if (!matrixObj.enabled) { // Only consider enabled matrices for hover calculations
+                        return;
+                    }
                     let m = matrixObj.values;
                     if (matrixObj.isInverse) {
                         const inv = calculateInverse(m);
@@ -1669,11 +1748,82 @@
             }, 300);
         });
 
+        // Drag and Drop Event Listeners for Matrix Cascade
+        matrixCascadePills.addEventListener('dragstart', (e) => {
+            const targetPill = e.target.closest('.matrix-pill');
+            if (targetPill) {
+                draggedItem = targetPill;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', draggedItem.dataset.id);
+                setTimeout(() => {
+                    draggedItem.classList.add('dragging');
+                }, 0); // Add class after a slight delay to allow dataTransfer to work
+            }
+        });
+
+        matrixCascadePills.addEventListener('dragover', (e) => {
+            e.preventDefault(); // Necessary to allow dropping
+            e.dataTransfer.dropEffect = 'move';
+            const targetPill = e.target.closest('.matrix-pill');
+            if (targetPill && targetPill !== draggedItem) {
+                // Remove drag-over from previous targets
+                matrixCascadePills.querySelectorAll('.matrix-pill').forEach(pill => {
+                    pill.classList.remove('drag-over');
+                });
+                targetPill.classList.add('drag-over');
+            }
+        });
+
+        matrixCascadePills.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+        });
+
+        matrixCascadePills.addEventListener('dragleave', (e) => {
+            const targetPill = e.target.closest('.matrix-pill');
+            if (targetPill) {
+                targetPill.classList.remove('drag-over');
+            }
+        });
+
+        matrixCascadePills.addEventListener('drop', (e) => {
+            e.preventDefault();
+            matrixCascadePills.querySelectorAll('.matrix-pill').forEach(pill => {
+                pill.classList.remove('drag-over');
+            });
+
+            const draggedId = e.dataTransfer.getData('text/plain');
+            const targetPill = e.target.closest('.matrix-pill');
+            const targetId = targetPill ? targetPill.dataset.id : null;
+
+            if (draggedId && targetId && draggedId !== targetId) {
+                const draggedIndex = matrixCascade.findIndex(m => m.id === draggedId);
+                const targetIndex = matrixCascade.findIndex(m => m.id === targetId);
+
+                if (draggedIndex !== -1 && targetIndex !== -1) {
+                    const [removed] = matrixCascade.splice(draggedIndex, 1);
+                    matrixCascade.splice(targetIndex, 0, removed);
+                    renderMatrixCascade();
+                    drawScene();
+                }
+            }
+        });
+
+        matrixCascadePills.addEventListener('dragend', (e) => {
+            if (draggedItem) {
+                draggedItem.classList.remove('dragging');
+                draggedItem = null;
+            }
+            matrixCascadePills.querySelectorAll('.matrix-pill').forEach(pill => {
+                pill.classList.remove('drag-over');
+            });
+        });
+
+
         // Initial setup
         window.onload = () => {
             initializeCanvas();
             // Add an initial Identity Matrix pill
-            matrixCascade.push({ id: generateUniqueId(), values: [[1, 0], [0, 1]], isInverse: false });
+            matrixCascade.push({ id: generateUniqueId(), values: [[1, 0], [0, 1]], isInverse: false, enabled: true });
             renderMatrixCascade();
             drawScene();
         };
