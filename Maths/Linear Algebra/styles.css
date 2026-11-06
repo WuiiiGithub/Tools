@@ -1,0 +1,34 @@
+/* State-based styles that Tailwind utilities cannot express declaratively. */
+
+.matrix-pill.dragging {
+    opacity: 0.5;
+    border: 2px dashed #3b82f6;
+}
+
+.matrix-pill.drag-over {
+    border: 2px solid #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+}
+
+#controlsBody,
+#matrixCascadePills {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+    overscroll-behavior: contain;
+}
+
+#controlsBody::-webkit-scrollbar,
+#matrixCascadePills::-webkit-scrollbar {
+    width: 6px;
+}
+
+#controlsBody::-webkit-scrollbar-track,
+#matrixCascadePills::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#controlsBody::-webkit-scrollbar-thumb,
+#matrixCascadePills::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: #cbd5e1;
+}
