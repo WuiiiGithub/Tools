@@ -1,5 +1,3 @@
-/* State-based styles that Tailwind utilities cannot express declaratively. */
-
 .matrix-pill.dragging {
     opacity: 0.5;
     border: 2px dashed #3b82f6;
