@@ -107,12 +107,25 @@
             return App.getVisibleBounds(vMatrix);
         }
 
-        return {
+        let bounds = {
             minX: Math.min(...points.map(point => point[0])),
             maxX: Math.max(...points.map(point => point[0])),
             minY: Math.min(...points.map(point => point[1])),
             maxY: Math.max(...points.map(point => point[1]))
         };
+
+        if (App.hasActivation('relu')) {
+            const reachX = Math.max(Math.abs(bounds.minX), Math.abs(bounds.maxX));
+            const reachY = Math.max(Math.abs(bounds.minY), Math.abs(bounds.maxY));
+            bounds = {
+                minX: Math.min(bounds.minX, -reachX),
+                maxX: Math.max(bounds.maxX, reachX),
+                minY: Math.min(bounds.minY, -reachY),
+                maxY: Math.max(bounds.maxY, reachY)
+            };
+        }
+
+        return bounds;
     };
 
     App.fitViewToScene = function () {
@@ -135,6 +148,10 @@
                 : inputPoints;
         }
 
+        if (App.hasActivation('relu')) {
+            points = points.concat(inputPoints);
+        }
+
         const minX = Math.min(...points.map(point => point[0]));
         const maxX = Math.max(...points.map(point => point[0]));
         const minY = Math.min(...points.map(point => point[1]));
@@ -148,6 +165,7 @@
         const margin = 1.25;
         const fitScaleX = (DOM.canvas.width / 2) / (halfSpanX * margin);
         const fitScaleY = (DOM.canvas.height / 2) / (halfSpanY * margin);
+        const comfortableScale = Math.min(DOM.canvas.width, DOM.canvas.height) / Config.COMFORTABLE_SCALE_DIVISOR;
         const scaleLimit = !App.hasNonlinearActivation()
             ? comfortableScale * 2
             : comfortableScale * 4;

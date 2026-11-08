@@ -5,21 +5,182 @@
     const App = Visuo.App = Visuo.App || {};
     const { DOM, State, Math: MathCore } = Visuo;
 
+    const ACTIVATION_FORMULAS = {
+        linear: { pair: '(x, y)', scalar: 'x' },
+        sigmoid: { pair: '(σ(x), σ(y))', scalar: 'σ(x)' },
+        tanh: { pair: '(tanh(x), tanh(y))', scalar: 'tanh(x)' },
+        relu: { pair: '(max(0, x), max(0, y))', scalar: 'max(0, x)' }
+    };
+
+    const getActivationFormula = name => ACTIVATION_FORMULAS[name] || ACTIVATION_FORMULAS.linear;
+
+    const getMatrixNumber = matrix => App.getMatrixLayers().indexOf(matrix) + 1;
+
+    App.isClassificationMode = function () {
+        return !!(State.dataset && State.dataset.valid && State.dataset.problemType === 'classification');
+    };
+
+    App.getLockedOutputActivation = function () {
+        if (!App.isClassificationMode()) {
+            return null;
+        }
+
+        const lastLayer = State.matrixCascade[State.matrixCascade.length - 1];
+        return lastLayer && App.isActivationLayer(lastLayer) && lastLayer.name === 'sigmoid'
+            ? lastLayer
+            : null;
+    };
+
+    App.isLayerLocked = function (layer) {
+        const lockedLayer = App.getLockedOutputActivation();
+        return !!lockedLayer && !!layer && lockedLayer.id === layer.id;
+    };
+
+    App.releaseClassificationOutputLock = function () {
+        State.matrixCascade.forEach(layer => {
+            if (App.isActivationLayer(layer)) {
+                layer.lockedOutput = false;
+            }
+        });
+    };
+
+    App.enforceClassificationOutput = function () {
+        if (!App.isClassificationMode()) {
+            App.releaseClassificationOutputLock();
+            return false;
+        }
+
+        State.matrixCascade.forEach(layer => {
+            if (App.isActivationLayer(layer)) {
+                layer.lockedOutput = false;
+            }
+        });
+
+        const lastLayer = State.matrixCascade[State.matrixCascade.length - 1];
+        if (lastLayer && App.isActivationLayer(lastLayer)) {
+            const changed = lastLayer.name !== 'sigmoid' || lastLayer.enabled === false || lastLayer.lockedOutput !== true;
+            lastLayer.name = 'sigmoid';
+            lastLayer.enabled = true;
+            lastLayer.lockedOutput = true;
+            return changed;
+        }
+
+        let sigmoidIndex = -1;
+        State.matrixCascade.forEach((layer, index) => {
+            if (App.isActivationLayer(layer) && layer.name === 'sigmoid') {
+                sigmoidIndex = index;
+            }
+        });
+
+        if (sigmoidIndex >= 0) {
+            const [sigmoidLayer] = State.matrixCascade.splice(sigmoidIndex, 1);
+            sigmoidLayer.enabled = true;
+            sigmoidLayer.lockedOutput = true;
+            State.matrixCascade.push(sigmoidLayer);
+        } else {
+            State.matrixCascade.push({
+                id: MathCore.generateUniqueId(),
+                type: 'activation',
+                name: 'sigmoid',
+                enabled: true,
+                lockedOutput: true
+            });
+        }
+
+        return true;
+    };
+
+    App.getCascadeInsertionIndex = function (requestedIndex) {
+        const lockedLayer = App.getLockedOutputActivation();
+        const index = Math.max(0, Math.min(State.matrixCascade.length, requestedIndex));
+        if (!lockedLayer) {
+            return index;
+        }
+
+        return Math.min(index, State.matrixCascade.indexOf(lockedLayer));
+    };
+
+    const buildMatrixVisual = (values, bias) => `
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-stretch gap-2">
+                <span class="matrix-bracket matrix-bracket-left"></span>
+                <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-right font-mono text-xs font-bold text-slate-700">
+                    <span>${values[0][0].toFixed(2)}</span>
+                    <span>${values[0][1].toFixed(2)}</span>
+                    <span>${values[1][0].toFixed(2)}</span>
+                    <span>${values[1][1].toFixed(2)}</span>
+                </div>
+                <span class="matrix-bracket matrix-bracket-right"></span>
+            </div>
+            <div class="flex items-center gap-2 rounded-lg bg-purple-50 px-2 py-1 ring-1 ring-purple-100">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-purple-500">bias</span>
+                <span class="matrix-bracket matrix-bracket-left matrix-bracket-small"></span>
+                <div class="flex flex-col text-right font-mono text-xs font-bold text-purple-700">
+                    <span>${bias[0].toFixed(2)}</span>
+                    <span>${bias[1].toFixed(2)}</span>
+                </div>
+                <span class="matrix-bracket matrix-bracket-right matrix-bracket-small"></span>
+            </div>
+        </div>
+    `;
+
     App.renderMatrixCascade = function () {
         DOM.matrixCascadePills.innerHTML = '';
 
         if (State.matrixCascade.length === 0) {
-            DOM.matrixCascadePills.innerHTML = '<p class="text-sm text-gray-500">No weight matrices added yet. Start by defining W₁!</p>';
+            DOM.matrixCascadePills.innerHTML = '<p class="text-sm text-gray-500">No layers added yet. Start by defining W₁!</p>';
         }
 
-        State.matrixCascade.forEach((matrix, index) => {
+        let matrixCount = 0;
+
+        State.matrixCascade.forEach((layer, index) => {
+            if (App.isActivationLayer(layer)) {
+                const pill = document.createElement('div');
+                const formula = getActivationFormula(layer.name);
+                const locked = App.isLayerLocked(layer);
+                pill.className = `cascade-pill activation-pill group relative flex flex-col gap-2 rounded-xl border p-3.5 text-sm shadow-sm transition-all hover:shadow-md ${locked ? 'cursor-default border-amber-400 bg-amber-50/90 text-amber-950 ring-2 ring-amber-200' : 'cursor-grab border-emerald-300 bg-emerald-50/90 text-emerald-900'}`;
+                pill.dataset.id = layer.id;
+                pill.dataset.index = index;
+                pill.dataset.layerType = 'activation';
+                pill.dataset.locked = locked ? 'true' : 'false';
+                pill.draggable = !locked;
+
+                pill.innerHTML = `
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" class="activation-enable-toggle h-[18px] w-[18px] cursor-pointer accent-emerald-500 disabled:cursor-not-allowed" data-id="${layer.id}" ${layer.enabled !== false ? 'checked' : ''} ${locked ? 'disabled' : ''} title="${locked ? 'Classification output activation is locked' : (layer.enabled !== false ? 'Disable Activation Layer' : 'Enable Activation Layer')}">
+                            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${locked ? 'bg-amber-600' : 'bg-emerald-600'} text-[11px] font-black text-white shadow-sm">f(·)</span>
+                            <span class="font-bold ${locked ? 'text-amber-950' : 'text-emerald-950'}">Activation <span class="uppercase">${layer.name}</span></span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            ${locked ? '<span class="rounded-full bg-amber-200/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">Output locked</span>' : ''}
+                            <button class="activation-delete-btn flex items-center justify-center rounded-md p-1 ${locked ? 'cursor-not-allowed bg-slate-300 text-slate-500' : 'bg-red-500 text-white hover:bg-red-600'}" data-id="${layer.id}" ${locked ? 'disabled' : ''} title="${locked ? 'Classification output activation cannot be deleted' : 'Delete Activation Layer'}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.5a.5.5 0 0 0 0 1h.5V14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3.5h.5a.5.5 0 0 0 0-1H11ZM4.5 3h7A.5.5 0 0 1 12 3.5v10.5a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V3.5a.5.5 0 0 1 .5-.5Z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                        <span class="rounded-md bg-white/80 px-2 py-1 font-mono font-semibold ${locked ? 'text-amber-700 ring-amber-200' : 'text-emerald-700 ring-emerald-200'} ring-1">f(x, y) = ${formula.pair}</span>
+                        <span class="font-medium ${locked ? 'text-amber-700' : 'text-emerald-600'}">${locked ? 'required for classification' : 'applies to layers above'}</span>
+                    </div>
+                `;
+
+                DOM.matrixCascadePills.appendChild(pill);
+                return;
+            }
+
+            matrixCount += 1;
+            const matrix = layer;
             const pill = document.createElement('div');
             const pillTone = matrix.isInverse
                 ? 'border-red-300 bg-pink-50/90 text-red-900'
                 : 'border-sky-300 bg-sky-50/90 text-sky-900';
-            pill.className = `matrix-pill group relative flex cursor-grab flex-col gap-2 rounded-xl border p-3.5 text-sm shadow-sm transition-all hover:shadow-md ${pillTone}`;
+            pill.className = `cascade-pill matrix-pill group relative flex cursor-grab flex-col gap-2 rounded-xl border p-3.5 text-sm shadow-sm transition-all hover:shadow-md ${pillTone}`;
             pill.dataset.id = matrix.id;
             pill.dataset.index = index;
+            pill.dataset.layerType = 'matrix';
             pill.draggable = true;
 
             const matrixValues = matrix.values;
@@ -32,9 +193,10 @@
                 <div class="flex items-center justify-between gap-2">
                     <div class="flex items-center gap-2">
                         <input type="checkbox" class="enable-toggle h-[18px] w-[18px] cursor-pointer accent-emerald-500" data-id="${matrix.id}" ${matrix.enabled ? 'checked' : ''} title="${matrix.enabled ? 'Disable Weight Matrix' : 'Enable Weight Matrix'}">
-                        <span class="font-bold text-slate-800">W<sub>${index + 1}</sub>${matrix.isInverse ? ' (Inverse)' : ''}</span>
+                        <span class="font-bold text-slate-800">W<sub>${matrixCount}</sub>${matrix.isInverse ? ' (Inverse)' : ''}</span>
+                        <span class="rounded-md bg-white/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">y = W<sub>${matrixCount}</sub>x + b<sub>${matrixCount}</sub></span>
                     </div>
-                    <div class="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                    <div class="flex items-center gap-1 opacity-80 transition-opacity group-hover:opacity-100">
                         <button class="duplicate-btn flex items-center justify-center rounded-md bg-blue-500 p-1 text-white hover:bg-blue-600" data-id="${matrix.id}" title="Duplicate Weight Matrix">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M4 1.5H14a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 3.5 12V2a.5.5 0 0 1 .5-.5zM14 2H4v10h10V2z"/>
@@ -54,24 +216,11 @@
                         </button>
                     </div>
                 </div>
-
-                <div class="flex items-center gap-3">
-                    <div class="grid grid-cols-[repeat(2,auto)] gap-x-2.5 gap-y-1 font-mono text-xs font-bold text-slate-700">
-                        <span>[${matrixValues[0][0].toFixed(2)}</span><span>${matrixValues[0][1].toFixed(2)}]</span>
-                        <span>[${matrixValues[1][0].toFixed(2)}</span><span>${matrixValues[1][1].toFixed(2)}]</span>
-                    </div>
-                    <div class="h-8 border-r-2 border-dashed border-slate-300"></div>
-                    <div class="flex flex-col font-mono text-xs font-bold text-purple-700">
-                        <span>+ [${bias[0].toFixed(2)}]</span>
-                        <span>  [${bias[1].toFixed(2)}]</span>
-                    </div>
-                </div>
+                ${buildMatrixVisual(matrixValues, bias)}
             `;
 
             DOM.matrixCascadePills.appendChild(pill);
         });
-
-        App.updateCascadeActivationUI();
 
         DOM.matrixCascadePills.querySelectorAll('.duplicate-btn').forEach(button => {
             button.addEventListener('click', (e) => {
@@ -94,36 +243,110 @@
         DOM.matrixCascadePills.querySelectorAll('.enable-toggle').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 e.stopPropagation();
-                App.toggleMatrixEnabled(e.currentTarget.dataset.id, e.currentTarget.checked);
+                App.toggleLayerEnabled(e.currentTarget.dataset.id, e.currentTarget.checked);
+            });
+        });
+        DOM.matrixCascadePills.querySelectorAll('.activation-enable-toggle').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                e.stopPropagation();
+                App.toggleLayerEnabled(e.currentTarget.dataset.id, e.currentTarget.checked);
+            });
+        });
+        DOM.matrixCascadePills.querySelectorAll('.activation-delete-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                App.deleteActivationLayer(e.currentTarget.dataset.id);
             });
         });
     };
 
-    App.updateCascadeActivationUI = function () {
-        if (!DOM.cascadeActivationLabel) return;
-        const act = State.activeActivationName || 'linear';
-        DOM.cascadeActivationLabel.textContent = act.toUpperCase();
-        if (DOM.clearCascadeActivationBtn) {
-            DOM.clearCascadeActivationBtn.classList.toggle('hidden', act === 'linear');
+    App.addActivationLayer = function (activationName, insertIndex = State.matrixCascade.length) {
+        const name = activationName || 'linear';
+        const index = App.getCascadeInsertionIndex(insertIndex);
+        const layer = {
+            id: MathCore.generateUniqueId(),
+            type: 'activation',
+            name,
+            enabled: true
+        };
+
+        State.activeActivationName = 'linear';
+        State.matrixCascade.splice(index, 0, layer);
+        App.enforceClassificationOutput();
+        App.renderMatrixCascade();
+        App.fitViewToScene();
+        App.drawScene();
+    };
+
+    App.deleteActivationLayer = function (id) {
+        const layer = State.matrixCascade.find(item => item.id === id);
+        if (App.isLayerLocked(layer)) {
+            return;
         }
+
+        State.matrixCascade = State.matrixCascade.filter(item => item.id !== id);
+        if (!App.hasExplicitActivationLayers()) {
+            State.activeActivationName = 'linear';
+        }
+        App.enforceClassificationOutput();
+        App.renderMatrixCascade();
+        App.fitViewToScene();
+        App.drawScene();
+    };
+
+    App.clearCascadeActivations = function () {
+        const lockedLayer = App.getLockedOutputActivation();
+        State.matrixCascade = State.matrixCascade.filter(layer => !App.isActivationLayer(layer) || (lockedLayer && layer.id === lockedLayer.id));
+        State.activeActivationName = 'linear';
+        App.enforceClassificationOutput();
+        App.renderMatrixCascade();
+        App.fitViewToScene();
+        App.drawScene();
     };
 
     App.setCascadeActivation = function (activationName) {
-        State.activeActivationName = activationName || 'linear';
-        App.updateCascadeActivationUI();
+        const name = activationName || 'linear';
+        if (App.isClassificationMode() && name !== 'sigmoid') {
+            return;
+        }
+
+        const activations = App.getActivationLayers();
+
+        if (activations.length === 0) {
+            State.activeActivationName = name;
+        } else if (name === 'linear') {
+            State.matrixCascade = State.matrixCascade.filter(layer => !App.isActivationLayer(layer));
+            State.activeActivationName = 'linear';
+        } else {
+            activations[activations.length - 1].name = name;
+            State.activeActivationName = name;
+        }
+
+        App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();
-        App.showMessage(`Cascade activation set to ${State.activeActivationName.toUpperCase()}`, 'info');
     };
 
-    App.toggleMatrixEnabled = function (id, enabled) {
-        const matrix = State.matrixCascade.find(item => item.id === id);
-        if (matrix) {
-            matrix.enabled = enabled;
+    App.toggleLayerEnabled = function (id, enabled) {
+        const layer = State.matrixCascade.find(item => item.id === id);
+        if (!layer) {
+            return;
+        }
+
+        if (App.isLayerLocked(layer)) {
+            layer.enabled = true;
+            App.renderMatrixCascade();
             App.fitViewToScene();
             App.drawScene();
+            return;
         }
+
+        layer.enabled = enabled;
+        App.fitViewToScene();
+        App.drawScene();
     };
+
+    App.toggleMatrixEnabled = App.toggleLayerEnabled;
 
     App.updateEditorInputsFromState = function () {
         App.hideMessage();
@@ -175,14 +398,16 @@
         const bx = DOM.bxInput ? (parseFloat(DOM.bxInput.value) || 0) : 0;
         const by = DOM.byInput ? (parseFloat(DOM.byInput.value) || 0) : 0;
 
-        State.matrixCascade.push({
+        State.matrixCascade.splice(App.getCascadeInsertionIndex(State.matrixCascade.length), 0, {
             id: MathCore.generateUniqueId(),
+            type: 'matrix',
             values: [[m00, m01], [m10, m11]],
             bias: [bx, by],
             isInverse: State.currentEditorIsInverse,
             enabled: true
         });
 
+        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();
@@ -190,13 +415,13 @@
     };
 
     App.editMatrix = function (id) {
-        const matrixToEdit = State.matrixCascade.find(item => item.id === id);
+        const matrixToEdit = State.matrixCascade.find(item => item.id === id && App.isMatrixLayer(item));
         if (!matrixToEdit) {
             return;
         }
 
         State.editingMatrixId = id;
-        DOM.editorTitle.innerHTML = `Edit Weight Matrix W<sub>${State.matrixCascade.indexOf(matrixToEdit) + 1}</sub>:`;
+        DOM.editorTitle.innerHTML = `Edit Weight Matrix W<sub>${getMatrixNumber(matrixToEdit)}</sub>:`;
         DOM.actionButton.textContent = 'Update';
         DOM.actionButton.removeEventListener('click', App.addMatrix);
         DOM.actionButton.addEventListener('click', App.updateMatrix);
@@ -244,6 +469,7 @@
 
     App.deleteMatrix = function (id) {
         State.matrixCascade = State.matrixCascade.filter(item => item.id !== id);
+        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();
@@ -253,19 +479,22 @@
     };
 
     App.duplicateMatrix = function (id) {
-        const matrixToDuplicate = State.matrixCascade.find(item => item.id === id);
+        const matrixToDuplicate = State.matrixCascade.find(item => item.id === id && App.isMatrixLayer(item));
         if (!matrixToDuplicate) {
             return;
         }
 
-        State.matrixCascade.push({
+        const sourceIndex = State.matrixCascade.indexOf(matrixToDuplicate);
+        State.matrixCascade.splice(sourceIndex + 1, 0, {
             id: MathCore.generateUniqueId(),
+            type: 'matrix',
             values: JSON.parse(JSON.stringify(matrixToDuplicate.values)),
             bias: matrixToDuplicate.bias ? [...matrixToDuplicate.bias] : [0, 0],
             isInverse: matrixToDuplicate.isInverse,
             enabled: matrixToDuplicate.enabled
         });
 
+        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();

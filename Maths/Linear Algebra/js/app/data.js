@@ -1,0 +1,642 @@
+(function (global) {
+    'use strict';
+
+    const Visuo = global.Visuo = global.Visuo || {};
+    const App = Visuo.App = Visuo.App || {};
+    const { DOM, State } = Visuo;
+
+    const parseCsv = function (text) {
+        const rows = [];
+        let row = [];
+        let field = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+
+            if (inQuotes) {
+                if (char === '"') {
+                    if (text[i + 1] === '"') {
+                        field += '"';
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    field += char;
+                }
+                continue;
+            }
+
+            if (char === '"') {
+                inQuotes = true;
+            } else if (char === ',') {
+                row.push(field);
+                field = '';
+            } else if (char === '\n') {
+                row.push(field);
+                rows.push(row);
+                row = [];
+                field = '';
+            } else if (char !== '\r') {
+                field += char;
+            }
+        }
+
+        if (field !== '' || row.length > 0) {
+            row.push(field);
+            rows.push(row);
+        }
+
+        return rows;
+    };
+
+    const setError = function (message) {
+        if (!DOM.csvError) {
+            return;
+        }
+
+        DOM.csvError.textContent = message;
+        DOM.csvError.classList.remove('hidden');
+    };
+
+    const clearError = function () {
+        if (!DOM.csvError) {
+            return;
+        }
+
+        DOM.csvError.textContent = '';
+        DOM.csvError.classList.add('hidden');
+    };
+
+    const setStatus = function (message, tone = 'neutral') {
+        if (!DOM.csvStatus) {
+            return;
+        }
+
+        DOM.csvStatus.textContent = message;
+        DOM.csvStatus.classList.remove('border-slate-200', 'bg-white/70', 'text-slate-500', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-700', 'border-amber-200', 'bg-amber-50', 'text-amber-700');
+
+        if (tone === 'success') {
+            DOM.csvStatus.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-700');
+        } else if (tone === 'warning') {
+            DOM.csvStatus.classList.add('border-amber-200', 'bg-amber-50', 'text-amber-700');
+        } else {
+            DOM.csvStatus.classList.add('border-slate-200', 'bg-white/70', 'text-slate-500');
+        }
+    };
+
+    const setSelectOptions = function (select, values, selectedValue) {
+        if (!select) {
+            return;
+        }
+
+        select.innerHTML = '';
+        values.forEach(value => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            select.appendChild(option);
+        });
+        select.value = values.includes(selectedValue) ? selectedValue : (values[0] || '');
+    };
+
+    const isNumericValue = value => value !== '' && Number.isFinite(Number(value));
+
+    const getColumnIndex = name => State.dataset.headers.indexOf(name);
+
+    const isNumericColumn = function (name, rows = State.dataset.rows) {
+        const index = getColumnIndex(name);
+        if (index === -1) {
+            return false;
+        }
+
+        return rows.every(row => isNumericValue(row[index]));
+    };
+
+    const getOutputClasses = function () {
+        const outputIndex = getColumnIndex(State.dataset.outputColumn);
+        if (outputIndex === -1) {
+            return [];
+        }
+
+        const seen = new Set();
+        const classes = [];
+        State.dataset.rows.forEach(row => {
+            const value = row[outputIndex];
+            if (!seen.has(value)) {
+                seen.add(value);
+                classes.push(value);
+            }
+        });
+        return classes;
+    };
+
+    const setClassOptions = function (select, classes, selectedValue) {
+        if (!select) {
+            return;
+        }
+
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select class';
+        select.appendChild(placeholder);
+
+        classes.forEach(className => {
+            const option = document.createElement('option');
+            option.value = className;
+            option.textContent = className;
+            select.appendChild(option);
+        });
+
+        select.value = classes.includes(selectedValue) ? selectedValue : '';
+    };
+
+    const updateClassSelectionUi = function () {
+        const dataset = State.dataset;
+        const classes = dataset.outputClasses || [];
+        const show = dataset.problemType === 'classification' && classes.length > 2;
+
+        if (DOM.classSelection) {
+            DOM.classSelection.classList.toggle('hidden', !show);
+        }
+
+        if (!show) {
+            return;
+        }
+
+        if (DOM.classSelectionHint) {
+            DOM.classSelectionHint.textContent = `Output "${dataset.outputColumn}" has ${classes.length} classes. Choose exactly two classes to keep.`;
+        }
+
+        setClassOptions(DOM.classASelect, classes, dataset.selectedClasses[0] || '');
+        setClassOptions(DOM.classBSelect, classes, dataset.selectedClasses[1] || '');
+    };
+
+    const updateEncodingSummary = function () {
+        if (!DOM.encodingSummary) {
+            return;
+        }
+
+        const dataset = State.dataset;
+        if (dataset.problemType !== 'classification' || dataset.labelMapping.length === 0) {
+            DOM.encodingSummary.textContent = '';
+            DOM.encodingSummary.classList.add('hidden');
+            return;
+        }
+
+        const mappingText = dataset.labelMapping
+            .map(item => `${item.label} → ${item.encoded}`)
+            .join('  ·  ');
+        DOM.encodingSummary.textContent = dataset.labelEncodingRequired
+            ? `Label encoded: ${mappingText}`
+            : `Numeric classes kept: ${mappingText}`;
+        DOM.encodingSummary.classList.remove('hidden');
+    };
+
+    const clearClassificationEncoding = function () {
+        const dataset = State.dataset;
+        dataset.outputClasses = [];
+        dataset.selectedClasses = [];
+        dataset.labelMapping = [];
+        dataset.labelEncodingRequired = false;
+        dataset.encodedRows = null;
+        updateClassSelectionUi();
+        updateEncodingSummary();
+    };
+
+    const buildClassificationData = function () {
+        const dataset = State.dataset;
+        const classes = getOutputClasses();
+        dataset.outputClasses = classes;
+
+        if (classes.length < 2) {
+            dataset.ready = false;
+            dataset.encodedRows = null;
+            dataset.labelMapping = [];
+            dataset.labelEncodingRequired = false;
+            updateClassSelectionUi();
+            updateEncodingSummary();
+            setError(`Classification output "${dataset.outputColumn}" must contain at least 2 classes.`);
+            return false;
+        }
+
+        let selectedClasses = dataset.selectedClasses.filter(className => classes.includes(className));
+
+        if (classes.length === 2) {
+            selectedClasses = classes.slice();
+        } else {
+            if (selectedClasses.length !== 2) {
+                dataset.selectedClasses = selectedClasses;
+                dataset.ready = false;
+                dataset.encodedRows = null;
+                dataset.labelMapping = [];
+                dataset.labelEncodingRequired = false;
+                updateClassSelectionUi();
+                updateEncodingSummary();
+                clearError();
+                setStatus(`Output "${dataset.outputColumn}" has ${classes.length} classes. Select exactly two classes to continue.`, 'warning');
+                return false;
+            }
+
+            if (selectedClasses[0] === selectedClasses[1]) {
+                dataset.ready = false;
+                updateClassSelectionUi();
+                updateEncodingSummary();
+                setError('Select two different output classes.');
+                return false;
+            }
+        }
+
+        const requiresEncoding = selectedClasses.some(className => !isNumericValue(className));
+        const labelMapping = selectedClasses.map((label, index) => ({
+            label,
+            encoded: requiresEncoding ? index : Number(label)
+        }));
+        const encodedByLabel = new Map(labelMapping.map(item => [item.label, item.encoded]));
+        const outputIndex = getColumnIndex(dataset.outputColumn);
+        const selectedSet = new Set(selectedClasses);
+
+        dataset.selectedClasses = selectedClasses.slice();
+        dataset.labelMapping = labelMapping;
+        dataset.labelEncodingRequired = requiresEncoding;
+        dataset.encodedRows = dataset.rows
+            .filter(row => selectedSet.has(row[outputIndex]))
+            .map(row => row.map((cell, index) => index === outputIndex ? encodedByLabel.get(row[outputIndex]) : cell));
+
+        updateClassSelectionUi();
+        updateEncodingSummary();
+        return true;
+    };
+
+    const getFeatureColumns = function () {
+        return State.dataset.headers.filter(header => header !== State.dataset.outputColumn);
+    };
+
+    const updateFeatureSelects = function () {
+        const features = getFeatureColumns();
+        let xFeature = State.dataset.xFeature;
+        let yFeature = State.dataset.yFeature;
+
+        if (!features.includes(xFeature)) {
+            xFeature = features[0] || '';
+        }
+        if (!features.includes(yFeature) || yFeature === xFeature) {
+            yFeature = features.find(header => header !== xFeature) || '';
+        }
+
+        setSelectOptions(DOM.xFeatureSelect, features, xFeature);
+        setSelectOptions(DOM.yFeatureSelect, features, yFeature);
+        State.dataset.xFeature = xFeature;
+        State.dataset.yFeature = yFeature;
+    };
+
+    const updateOutputSelect = function () {
+        const headers = State.dataset.headers;
+        let outputColumn = State.dataset.outputColumn;
+        if (!headers.includes(outputColumn)) {
+            outputColumn = headers[headers.length - 1] || '';
+        }
+
+        setSelectOptions(DOM.outputColumnSelect, headers, outputColumn);
+        State.dataset.outputColumn = outputColumn;
+        updateFeatureSelects();
+    };
+
+    const validateSelections = function () {
+        const dataset = State.dataset;
+        if (!dataset.valid) {
+            dataset.ready = false;
+            return false;
+        }
+
+        if (!dataset.problemType) {
+            dataset.ready = false;
+            setStatus('Dataset accepted. Choose classification or regression.', 'warning');
+            return false;
+        }
+
+        if (!dataset.outputColumn || !dataset.xFeature || !dataset.yFeature) {
+            dataset.ready = false;
+            setError('Choose an output variable and both X and Y features.');
+            return false;
+        }
+
+        if (dataset.xFeature === dataset.yFeature) {
+            dataset.ready = false;
+            setError('X and Y features must be different columns.');
+            return false;
+        }
+
+        if (dataset.problemType === 'classification') {
+            if (!buildClassificationData()) {
+                return false;
+            }
+        } else {
+            clearClassificationEncoding();
+        }
+
+        const activeRows = dataset.problemType === 'classification'
+            ? dataset.encodedRows || []
+            : dataset.rows;
+
+        if (!isNumericColumn(dataset.xFeature, activeRows)) {
+            dataset.ready = false;
+            setError(`X feature "${dataset.xFeature}" must contain only numbers.`);
+            return false;
+        }
+
+        if (!isNumericColumn(dataset.yFeature, activeRows)) {
+            dataset.ready = false;
+            setError(`Y feature "${dataset.yFeature}" must contain only numbers.`);
+            return false;
+        }
+
+        if (dataset.problemType === 'regression' && !isNumericColumn(dataset.outputColumn, activeRows)) {
+            dataset.ready = false;
+            setError(`Regression output "${dataset.outputColumn}" must contain only numbers.`);
+            return false;
+        }
+
+        clearError();
+        dataset.ready = true;
+        setStatus(`Ready: output = ${dataset.outputColumn}, X = ${dataset.xFeature}, Y = ${dataset.yFeature}.`, 'success');
+        return true;
+    };
+
+    const syncSelectionsFromUi = function () {
+        if (!State.dataset.valid) {
+            return false;
+        }
+
+        if (DOM.outputColumnSelect) {
+            State.dataset.outputColumn = DOM.outputColumnSelect.value;
+        }
+        updateFeatureSelects();
+        if (DOM.xFeatureSelect) {
+            State.dataset.xFeature = DOM.xFeatureSelect.value;
+        }
+        if (DOM.yFeatureSelect) {
+            State.dataset.yFeature = DOM.yFeatureSelect.value;
+        }
+
+        if (State.dataset.xFeature === State.dataset.yFeature) {
+            const features = getFeatureColumns();
+            const alternative = features.find(header => header !== State.dataset.yFeature);
+            if (alternative) {
+                State.dataset.xFeature = alternative;
+                if (DOM.xFeatureSelect) {
+                    DOM.xFeatureSelect.value = alternative;
+                }
+            }
+        }
+
+        clearError();
+        return validateSelections();
+    };
+
+    const refreshLockState = function () {
+        if (State.dataset.problemType === 'classification') {
+            App.enforceClassificationOutput();
+        } else {
+            App.releaseClassificationOutputLock();
+        }
+        App.renderMatrixCascade();
+        App.fitViewToScene();
+        App.drawScene();
+    };
+
+    App.parseCsv = parseCsv;
+
+    App.getDatasetClassLabel = function (encodedValue) {
+        const mappingItem = (State.dataset.labelMapping || []).find(item => Number(item.encoded) === Number(encodedValue));
+        return mappingItem ? mappingItem.label : encodedValue;
+    };
+
+    App.importCsvText = function (text, fileName = 'dataset.csv') {
+        clearError();
+        const sourceText = text ? String(text).replace(/^\uFEFF/, '') : '';
+
+        if (sourceText.trim() === '') {
+            setError('CSV is empty. Add a header row and at least one data row.');
+            return false;
+        }
+
+        let parsedRows;
+        try {
+            parsedRows = parseCsv(sourceText);
+        } catch (error) {
+            setError('CSV could not be parsed.');
+            return false;
+        }
+
+        const rows = parsedRows
+            .map(row => row.map(cell => String(cell).trim()))
+            .filter(row => row.some(cell => cell !== ''));
+
+        if (rows.length < 2) {
+            setError('CSV must contain a header row and at least one data row.');
+            return false;
+        }
+
+        const headers = rows[0];
+        const dataRows = rows.slice(1);
+
+        if (headers.length < 3) {
+            setError('CSV must have at least 3 columns so an output and two input features can be chosen.');
+            return false;
+        }
+
+        if (headers.some(header => header === '')) {
+            setError('CSV has an empty column name.');
+            return false;
+        }
+
+        if (new Set(headers).size !== headers.length) {
+            setError('CSV column names must be unique.');
+            return false;
+        }
+
+        for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex++) {
+            if (dataRows[rowIndex].length !== headers.length) {
+                setError(`Row ${rowIndex + 2} has ${dataRows[rowIndex].length} values but ${headers.length} columns were expected.`);
+                return false;
+            }
+
+            for (let columnIndex = 0; columnIndex < headers.length; columnIndex++) {
+                if (dataRows[rowIndex][columnIndex] === '') {
+                    setError(`Missing value at row ${rowIndex + 2}, column "${headers[columnIndex]}".`);
+                    return false;
+                }
+            }
+        }
+
+        State.dataset.fileName = fileName;
+        State.dataset.headers = headers;
+        State.dataset.rows = dataRows;
+        State.dataset.problemType = null;
+        State.dataset.outputColumn = headers[headers.length - 1];
+        State.dataset.xFeature = '';
+        State.dataset.yFeature = '';
+        State.dataset.outputClasses = [];
+        State.dataset.selectedClasses = [];
+        State.dataset.labelMapping = [];
+        State.dataset.labelEncodingRequired = false;
+        State.dataset.encodedRows = null;
+        State.dataset.valid = true;
+        State.dataset.ready = false;
+
+        if (DOM.csvFileName) {
+            DOM.csvFileName.textContent = fileName;
+        }
+        if (DOM.csvSummary) {
+            DOM.csvSummary.textContent = `${dataRows.length} × ${headers.length}`;
+        }
+        if (DOM.problemTypeClassification) {
+            DOM.problemTypeClassification.checked = false;
+            DOM.problemTypeClassification.disabled = false;
+        }
+        if (DOM.problemTypeRegression) {
+            DOM.problemTypeRegression.checked = false;
+            DOM.problemTypeRegression.disabled = false;
+        }
+        if (DOM.outputColumnSelect) {
+            DOM.outputColumnSelect.disabled = true;
+        }
+        if (DOM.xFeatureSelect) {
+            DOM.xFeatureSelect.disabled = true;
+        }
+        if (DOM.yFeatureSelect) {
+            DOM.yFeatureSelect.disabled = true;
+        }
+
+        updateOutputSelect();
+        updateClassSelectionUi();
+        updateEncodingSummary();
+        clearError();
+        setStatus(`Dataset accepted (${dataRows.length} rows, ${headers.length} columns). Choose classification or regression.`, 'warning');
+        App.releaseClassificationOutputLock();
+        App.renderMatrixCascade();
+        return true;
+    };
+
+    App.initDataSection = function () {
+        if (!DOM.csvFileInput || !DOM.problemTypeClassification || !DOM.problemTypeRegression) {
+            return;
+        }
+
+        const readFile = file => {
+            if (!file) {
+                return;
+            }
+
+            file.text().then(text => {
+                App.importCsvText(text, file.name);
+                DOM.csvFileInput.value = '';
+            }).catch(() => {
+                setError('Could not read the selected CSV file.');
+                DOM.csvFileInput.value = '';
+            });
+        };
+
+        DOM.csvFileInput.addEventListener('change', event => {
+            readFile(event.target.files && event.target.files[0]);
+        });
+
+        if (DOM.csvDropZone) {
+            ['dragenter', 'dragover'].forEach(eventName => {
+                DOM.csvDropZone.addEventListener(eventName, event => {
+                    event.preventDefault();
+                    DOM.csvDropZone.classList.add('border-amber-500', 'bg-white');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                DOM.csvDropZone.addEventListener(eventName, event => {
+                    event.preventDefault();
+                    DOM.csvDropZone.classList.remove('border-amber-500', 'bg-white');
+                });
+            });
+
+            DOM.csvDropZone.addEventListener('drop', event => {
+                readFile(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]);
+            });
+        }
+
+        const handleProblemTypeChange = function (problemType) {
+            if (!State.dataset.valid) {
+                return;
+            }
+
+            State.dataset.problemType = problemType;
+            if (DOM.outputColumnSelect) {
+                DOM.outputColumnSelect.disabled = false;
+            }
+            if (DOM.xFeatureSelect) {
+                DOM.xFeatureSelect.disabled = false;
+            }
+            if (DOM.yFeatureSelect) {
+                DOM.yFeatureSelect.disabled = false;
+            }
+
+            refreshLockState();
+            syncSelectionsFromUi();
+        };
+
+        DOM.problemTypeClassification.addEventListener('change', event => {
+            if (event.target.checked) {
+                handleProblemTypeChange('classification');
+            }
+        });
+
+        DOM.problemTypeRegression.addEventListener('change', event => {
+            if (event.target.checked) {
+                handleProblemTypeChange('regression');
+            }
+        });
+
+        if (DOM.outputColumnSelect) {
+            DOM.outputColumnSelect.addEventListener('change', () => {
+                State.dataset.outputColumn = DOM.outputColumnSelect.value;
+                State.dataset.selectedClasses = [];
+                updateFeatureSelects();
+                syncSelectionsFromUi();
+            });
+        }
+
+        if (DOM.xFeatureSelect) {
+            DOM.xFeatureSelect.addEventListener('change', () => {
+                State.dataset.xFeature = DOM.xFeatureSelect.value;
+                syncSelectionsFromUi();
+            });
+        }
+
+        if (DOM.yFeatureSelect) {
+            DOM.yFeatureSelect.addEventListener('change', () => {
+                State.dataset.yFeature = DOM.yFeatureSelect.value;
+                syncSelectionsFromUi();
+            });
+        }
+
+        if (DOM.classASelect) {
+            DOM.classASelect.addEventListener('change', () => {
+                State.dataset.selectedClasses = [
+                    DOM.classASelect.value,
+                    DOM.classBSelect ? DOM.classBSelect.value : ''
+                ].filter(Boolean);
+                syncSelectionsFromUi();
+            });
+        }
+
+        if (DOM.classBSelect) {
+            DOM.classBSelect.addEventListener('change', () => {
+                State.dataset.selectedClasses = [
+                    DOM.classASelect ? DOM.classASelect.value : '',
+                    DOM.classBSelect.value
+                ].filter(Boolean);
+                syncSelectionsFromUi();
+            });
+        }
+    };
+})(window);

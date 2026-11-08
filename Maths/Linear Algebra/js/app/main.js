@@ -8,9 +8,14 @@
     function boot() {
         App.initializeCanvas();
         App.initInteractions();
+        if (App.initDataSection) {
+            App.initDataSection();
+        }
         State.matrixCascade.push({
             id: MathCore.generateUniqueId(),
+            type: 'matrix',
             values: [[1, 0], [0, 1]],
+            bias: [0, 0],
             isInverse: false,
             enabled: true
         });

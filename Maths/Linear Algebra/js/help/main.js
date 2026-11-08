@@ -10,12 +10,12 @@
         const ctx = canvas.getContext('2d');
 
         katex.render(
-            "F(x,y) = \\begin{bmatrix} S(x + 0.6y) \\\\ S(y - 0.5x) \\end{bmatrix}",
+            "F(x,y) = \\begin{bmatrix} \\sigma(x) \\\\ \\sigma(y) \\end{bmatrix}",
             document.getElementById('formulaSigmoid'),
             { throwOnError: false }
         );
         katex.render(
-            "e_1 = \\frac{\\partial F}{\\partial x}, \\quad e_2 = \\frac{\\partial F}{\\partial y}",
+            "J(x,y) = \\begin{bmatrix} \\sigma'(x) & 0 \\\\ 0 & \\sigma'(y) \\end{bmatrix}",
             document.getElementById('formulaJacobian'),
             { throwOnError: false }
         );
@@ -33,7 +33,8 @@
         let isPanning = false;
         let panStart = { x: 0, y: 0 };
 
-        const BASE_SCALE = 60;
+        const GRID_RANGE = 6;
+        const VIEW_MARGIN = 1.25;
 
         const sigmoidFn = v => 1 / (1 + Math.exp(-v));
         const sigmoidDeriv = v => {
@@ -42,9 +43,7 @@
         };
 
         function rawTransformedPoint(x, y) {
-            const u = x + 0.6 * y;
-            const v = y - 0.5 * x;
-            return { x: sigmoidFn(u), y: sigmoidFn(v) };
+            return { x: sigmoidFn(x), y: sigmoidFn(y) };
         }
 
         function transformPoint(x, y, t) {
@@ -59,23 +58,17 @@
         }
 
         function getLocalBasis(x, y, t) {
-            const u = x + 0.6 * y;
-            const v = y - 0.5 * x;
-            const du = sigmoidDeriv(u);
-            const dv = sigmoidDeriv(v);
-            const j00 = du;
-            const j01 = du * 0.6;
-            const j10 = -0.5 * dv;
-            const j11 = dv;
+            const dx = sigmoidDeriv(x);
+            const dy = sigmoidDeriv(y);
 
             return {
                 e1: {
-                    x: (1 - t) + t * j00,
-                    y: t * j10
+                    x: (1 - t) + t * dx,
+                    y: 0
                 },
                 e2: {
-                    x: t * j01,
-                    y: (1 - t) + t * j11
+                    x: 0,
+                    y: (1 - t) + t * dy
                 }
             };
         }
@@ -90,17 +83,40 @@
             draw();
         }
 
-        function mathToCanvas(mx, my, centerOffsetX = 0) {
+        function getView(t, centerOffsetX = 0) {
+            const panelWidth = viewMode === 'split' ? width / 2 : width;
+            const a = transformPoint(-GRID_RANGE, -GRID_RANGE, t);
+            const b = transformPoint(GRID_RANGE, GRID_RANGE, t);
+            const minX = Math.min(a.x, b.x);
+            const maxX = Math.max(a.x, b.x);
+            const minY = Math.min(a.y, b.y);
+            const maxY = Math.max(a.y, b.y);
+            const spanX = Math.max(maxX - minX, 1e-6);
+            const spanY = Math.max(maxY - minY, 1e-6);
+            const fitScale = Math.min(
+                panelWidth / (spanX * VIEW_MARGIN),
+                height / (spanY * VIEW_MARGIN)
+            );
+
             return {
-                x: width / 2 + centerOffsetX + (mx + pan.x) * BASE_SCALE * zoom,
-                y: height / 2 - (my + pan.y) * BASE_SCALE * zoom
+                scale: fitScale * zoom,
+                centerX: (minX + maxX) / 2,
+                centerY: (minY + maxY) / 2,
+                offsetX: centerOffsetX
             };
         }
 
-        function canvasToMath(cx, cy, centerOffsetX = 0) {
+        function mathToCanvas(mx, my, view) {
             return {
-                x: (cx - width / 2 - centerOffsetX) / (BASE_SCALE * zoom) - pan.x,
-                y: (height / 2 - cy) / (BASE_SCALE * zoom) - pan.y
+                x: width / 2 + view.offsetX + (mx + pan.x - view.centerX) * view.scale,
+                y: height / 2 - (my + pan.y - view.centerY) * view.scale
+            };
+        }
+
+        function canvasToMath(cx, cy, view) {
+            return {
+                x: (cx - width / 2 - view.offsetX) / view.scale - pan.x + view.centerX,
+                y: (height / 2 - cy) / view.scale - pan.y + view.centerY
             };
         }
 
@@ -139,7 +155,8 @@
         }
 
         function drawSpaceGrid(t, centerOffsetX) {
-            const range = 6;
+            const view = getView(t, centerOffsetX);
+            const range = GRID_RANGE;
             const step = 0.5;
             const subSteps = 120;
 
@@ -147,10 +164,10 @@
                 const boxMin = 0;
                 const boxMax = 1;
 
-                const p1 = mathToCanvas(boxMin, boxMin, centerOffsetX);
-                const p2 = mathToCanvas(boxMax, boxMin, centerOffsetX);
-                const p3 = mathToCanvas(boxMax, boxMax, centerOffsetX);
-                const p4 = mathToCanvas(boxMin, boxMax, centerOffsetX);
+                const p1 = mathToCanvas(boxMin, boxMin, view);
+                const p2 = mathToCanvas(boxMax, boxMin, view);
+                const p3 = mathToCanvas(boxMax, boxMax, view);
+                const p4 = mathToCanvas(boxMin, boxMax, view);
 
                 ctx.fillStyle = 'rgba(99, 102, 241, 0.05)';
                 ctx.beginPath();
@@ -183,7 +200,7 @@
                 for (let i = 0; i <= subSteps; i++) {
                     const y = -range + (i / subSteps) * (2 * range);
                     const point = transformPoint(value, y, t);
-                    const canvasPoint = mathToCanvas(point.x, point.y, centerOffsetX);
+                    const canvasPoint = mathToCanvas(point.x, point.y, view);
                     if (i === 0) {
                         ctx.moveTo(canvasPoint.x, canvasPoint.y);
                     } else {
@@ -196,7 +213,7 @@
                 for (let i = 0; i <= subSteps; i++) {
                     const x = -range + (i / subSteps) * (2 * range);
                     const point = transformPoint(x, value, t);
-                    const canvasPoint = mathToCanvas(point.x, point.y, centerOffsetX);
+                    const canvasPoint = mathToCanvas(point.x, point.y, view);
                     if (i === 0) {
                         ctx.moveTo(canvasPoint.x, canvasPoint.y);
                     } else {
@@ -215,17 +232,19 @@
                 for (let gy = -4.5; gy <= 4.5; gy += vectorSpacing) {
                     const point = transformPoint(gx, gy, t);
                     const basis = getLocalBasis(gx, gy, t);
-                    const canvasPoint = mathToCanvas(point.x, point.y, centerOffsetX);
+                    const canvasPoint = mathToCanvas(point.x, point.y, view);
 
-                    drawArrow(canvasPoint.x, canvasPoint.y, canvasPoint.x + basis.e1.x * 8, canvasPoint.y - basis.e1.y * 8, 'rgba(52, 211, 153, 0.35)', 1.5);
-                    drawArrow(canvasPoint.x, canvasPoint.y, canvasPoint.x + basis.e2.x * 8, canvasPoint.y - basis.e2.y * 8, 'rgba(251, 113, 133, 0.35)', 1.5);
+                    const arrowScale = view.scale * 0.15;
+                    drawArrow(canvasPoint.x, canvasPoint.y, canvasPoint.x + basis.e1.x * arrowScale, canvasPoint.y - basis.e1.y * arrowScale, 'rgba(52, 211, 153, 0.35)', 1.5);
+                    drawArrow(canvasPoint.x, canvasPoint.y, canvasPoint.x + basis.e2.x * arrowScale, canvasPoint.y - basis.e2.y * arrowScale, 'rgba(251, 113, 133, 0.35)', 1.5);
                 }
             }
         }
 
         function drawProbeAndBasis(t, centerOffsetX) {
+            const view = getView(t, centerOffsetX);
             const probePoint = transformPoint(probe.x, probe.y, t);
-            const canvasPoint = mathToCanvas(probePoint.x, probePoint.y, centerOffsetX);
+            const canvasPoint = mathToCanvas(probePoint.x, probePoint.y, view);
             const basis = getLocalBasis(probe.x, probe.y, t);
 
             ctx.save();
@@ -247,7 +266,7 @@
             ctx.stroke();
             ctx.restore();
 
-            const vectorScale = BASE_SCALE * zoom * 0.35;
+            const vectorScale = view.scale * 0.35;
 
             drawArrow(
                 canvasPoint.x,
@@ -309,7 +328,7 @@
             const angleDeg = (Math.acos(cosTheta) * 180 / Math.PI).toFixed(1);
 
             document.getElementById('basisLengths').innerText = `|e₁|=${len1.toFixed(3)}, |e₂|=${len2.toFixed(3)}`;
-            document.getElementById('basisAngle').innerText = `θ = ${angleDeg}° (${angleDeg === '90.0' ? 'Orthogonal' : 'Non-orthogonal tilt'})`;
+            document.getElementById('basisAngle').innerText = `θ = ${angleDeg}° (Orthogonal scaling)`;
         }
 
         function draw() {
@@ -333,7 +352,7 @@
                 ctx.clip();
                 drawSpaceGrid(morphT, halfWidth / 2);
                 drawProbeAndBasis(morphT, halfWidth / 2);
-                drawSplitLabel('Curved Sigmoid Space', halfWidth + 20);
+                drawSplitLabel('Element-wise Sigmoid Space', halfWidth + 20);
                 ctx.restore();
 
                 ctx.strokeStyle = '#334155';
@@ -425,8 +444,9 @@
             }
 
             const currentT = viewMode === 'linear' ? 0 : morphT;
+            const view = getView(currentT, centerOffsetX);
             const probePoint = transformPoint(probe.x, probe.y, currentT);
-            const canvasPoint = mathToCanvas(probePoint.x, probePoint.y, centerOffsetX);
+            const canvasPoint = mathToCanvas(probePoint.x, probePoint.y, view);
             const distance = Math.hypot(pos.x - canvasPoint.x, pos.y - canvasPoint.y);
 
             if (distance < 25) {
@@ -445,13 +465,21 @@
                 if (viewMode === 'split') {
                     centerOffsetX = pos.x < width / 2 ? -width / 4 : width / 4;
                 }
-                const mathPoint = canvasToMath(pos.x, pos.y, centerOffsetX);
-                probe.x = MathCore.clamp(mathPoint.x, -6, 6);
-                probe.y = MathCore.clamp(mathPoint.y, -6, 6);
+                const currentT = viewMode === 'linear' ? 0 : morphT;
+                const view = getView(currentT, centerOffsetX);
+                const mathPoint = canvasToMath(pos.x, pos.y, view);
+                probe.x = MathCore.clamp(mathPoint.x, -GRID_RANGE, GRID_RANGE);
+                probe.y = MathCore.clamp(mathPoint.y, -GRID_RANGE, GRID_RANGE);
                 draw();
             } else if (isPanning) {
-                const dx = (pos.x - panStart.x) / (BASE_SCALE * zoom);
-                const dy = -(pos.y - panStart.y) / (BASE_SCALE * zoom);
+                let centerOffsetX = 0;
+                if (viewMode === 'split') {
+                    centerOffsetX = pos.x < width / 2 ? -width / 4 : width / 4;
+                }
+                const currentT = viewMode === 'linear' ? 0 : morphT;
+                const view = getView(currentT, centerOffsetX);
+                const dx = (pos.x - panStart.x) / view.scale;
+                const dy = -(pos.y - panStart.y) / view.scale;
                 pan.x += dx;
                 pan.y += dy;
                 panStart = { x: pos.x, y: pos.y };

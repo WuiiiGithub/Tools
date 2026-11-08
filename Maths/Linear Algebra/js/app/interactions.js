@@ -54,38 +54,174 @@
 
             chip.addEventListener('click', () => {
                 const act = chip.dataset.activation;
-                App.setCascadeActivation(act);
+                App.addActivationLayer(act, State.matrixCascade.length);
             });
         });
 
-        if (DOM.settingsToggleBtn && DOM.settingsPanel) {
+        if (DOM.settingsToggleBtn && DOM.settingsModal) {
             DOM.settingsToggleBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const isHidden = DOM.settingsPanel.classList.contains('hidden');
-                DOM.settingsPanel.classList.toggle('hidden', !isHidden);
-                DOM.settingsToggleBtn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+                App.toggleSettingsModal();
             });
 
             if (DOM.closeSettingsBtn) {
-                DOM.closeSettingsBtn.addEventListener('click', () => {
-                    DOM.settingsPanel.classList.add('hidden');
-                    DOM.settingsToggleBtn.setAttribute('aria-expanded', 'false');
-                });
+                DOM.closeSettingsBtn.addEventListener('click', App.closeSettingsModal);
+            }
+            if (DOM.doneSettingsBtn) {
+                DOM.doneSettingsBtn.addEventListener('click', App.closeSettingsModal);
+            }
+            if (DOM.settingsBackdrop) {
+                DOM.settingsBackdrop.addEventListener('click', App.closeSettingsModal);
+            }
+        }
+
+        const gridThicknessControls = [
+            {
+                slider: DOM.originalGridThicknessSlider,
+                valueLabel: DOM.originalGridThicknessValue,
+                stateKey: 'originalGridThickness'
+            },
+            {
+                slider: DOM.transformedGridThicknessSlider,
+                valueLabel: DOM.transformedGridThicknessValue,
+                stateKey: 'transformedGridThickness'
+            }
+        ];
+
+        gridThicknessControls.forEach(({ slider, valueLabel, stateKey }) => {
+            if (!slider) {
+                return;
             }
 
-            document.addEventListener('click', (e) => {
-                if (!DOM.settingsPanel.contains(e.target) && !DOM.settingsToggleBtn.contains(e.target)) {
-                    DOM.settingsPanel.classList.add('hidden');
-                    DOM.settingsToggleBtn.setAttribute('aria-expanded', 'false');
+            const initialValue = parseFloat(slider.value);
+            if (Number.isFinite(initialValue)) {
+                State[stateKey] = MathCore.clamp(initialValue, Config.MIN_GRID_THICKNESS, Config.MAX_GRID_THICKNESS);
+            }
+            if (valueLabel) {
+                valueLabel.textContent = State[stateKey].toFixed(1);
+            }
+
+            slider.addEventListener('input', () => {
+                const nextValue = parseFloat(slider.value);
+                if (!Number.isFinite(nextValue)) {
+                    return;
                 }
+
+                State[stateKey] = MathCore.clamp(nextValue, Config.MIN_GRID_THICKNESS, Config.MAX_GRID_THICKNESS);
+                if (valueLabel) {
+                    valueLabel.textContent = State[stateKey].toFixed(1);
+                }
+                App.drawScene();
+            });
+        });
+
+        const gridDensityControls = [
+            {
+                slider: DOM.originalGridDensitySlider,
+                valueLabel: DOM.originalGridDensityValue,
+                stateKey: 'originalGridDensity'
+            },
+            {
+                slider: DOM.transformedGridDensitySlider,
+                valueLabel: DOM.transformedGridDensityValue,
+                stateKey: 'transformedGridDensity'
+            }
+        ];
+
+        gridDensityControls.forEach(({ slider, valueLabel, stateKey }) => {
+            if (!slider) {
+                return;
+            }
+
+            const initialValue = parseFloat(slider.value);
+            if (Number.isFinite(initialValue)) {
+                State[stateKey] = MathCore.clamp(initialValue, Config.MIN_GRID_DENSITY, Config.MAX_GRID_DENSITY);
+            }
+            if (valueLabel) {
+                valueLabel.textContent = `${State[stateKey].toFixed(1)}×`;
+            }
+
+            slider.addEventListener('input', () => {
+                const nextValue = parseFloat(slider.value);
+                if (!Number.isFinite(nextValue)) {
+                    return;
+                }
+
+                State[stateKey] = MathCore.clamp(nextValue, Config.MIN_GRID_DENSITY, Config.MAX_GRID_DENSITY);
+                if (valueLabel) {
+                    valueLabel.textContent = `${State[stateKey].toFixed(1)}×`;
+                }
+                App.drawScene();
+            });
+        });
+
+        if (DOM.renderScopeSlider) {
+            const initialScope = parseFloat(DOM.renderScopeSlider.value);
+            if (Number.isFinite(initialScope)) {
+                State.renderScope = MathCore.clamp(initialScope, 0, 1);
+            }
+            if (DOM.renderScopeValue) {
+                DOM.renderScopeValue.textContent = `${Math.round(State.renderScope * 100)}%`;
+            }
+
+            DOM.renderScopeSlider.addEventListener('input', () => {
+                const nextScope = parseFloat(DOM.renderScopeSlider.value);
+                if (!Number.isFinite(nextScope)) {
+                    return;
+                }
+
+                State.renderScope = MathCore.clamp(nextScope, 0, 1);
+                if (DOM.renderScopeValue) {
+                    DOM.renderScopeValue.textContent = `${Math.round(State.renderScope * 100)}%`;
+                }
+                App.drawScene();
             });
         }
 
-        if (DOM.clearCascadeActivationBtn) {
-            DOM.clearCascadeActivationBtn.addEventListener('click', () => {
-                App.setCascadeActivation('linear');
+        const fontSizeControls = [
+            {
+                slider: DOM.tickFontSizeSlider,
+                valueLabel: DOM.tickFontSizeValue,
+                stateKey: 'tickFontSize'
+            },
+            {
+                slider: DOM.axisFontSizeSlider,
+                valueLabel: DOM.axisFontSizeValue,
+                stateKey: 'axisFontSize'
+            },
+            {
+                slider: DOM.vectorFontSizeSlider,
+                valueLabel: DOM.vectorFontSizeValue,
+                stateKey: 'vectorFontSize'
+            }
+        ];
+
+        fontSizeControls.forEach(({ slider, valueLabel, stateKey }) => {
+            if (!slider) {
+                return;
+            }
+
+            const initialValue = parseFloat(slider.value);
+            if (Number.isFinite(initialValue)) {
+                State[stateKey] = MathCore.clamp(initialValue, Config.MIN_FONT_SIZE, Config.MAX_FONT_SIZE);
+            }
+            if (valueLabel) {
+                valueLabel.textContent = `${Math.round(State[stateKey])}px`;
+            }
+
+            slider.addEventListener('input', () => {
+                const nextValue = parseFloat(slider.value);
+                if (!Number.isFinite(nextValue)) {
+                    return;
+                }
+
+                State[stateKey] = MathCore.clamp(nextValue, Config.MIN_FONT_SIZE, Config.MAX_FONT_SIZE);
+                if (valueLabel) {
+                    valueLabel.textContent = `${Math.round(State[stateKey])}px`;
+                }
+                App.drawScene();
             });
-        }
+        });
 
         const editorSection = DOM.m00Input ? DOM.m00Input.closest('section') : null;
         if (editorSection) {
@@ -103,7 +239,7 @@
                 if (act) {
                     e.preventDefault();
                     editorSection.classList.remove('ring-2', 'ring-emerald-500');
-                    App.setCascadeActivation(act);
+                    App.addActivationLayer(act, State.matrixCascade.length);
                 }
             });
         }
@@ -246,7 +382,16 @@
         DOM.controlsBackdrop.addEventListener('click', App.closeControlsDrawer);
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && !DOM.controlsDrawer.inert) {
+            if (e.key !== 'Escape') {
+                return;
+            }
+
+            if (DOM.settingsModal && !DOM.settingsModal.classList.contains('hidden')) {
+                App.closeSettingsModal();
+                return;
+            }
+
+            if (!DOM.controlsDrawer.inert) {
                 App.closeControlsDrawer();
             }
         });
@@ -258,8 +403,18 @@
         }
         App.syncMobileRestriction();
 
+        const clearDropHighlights = () => {
+            DOM.matrixCascadePills.querySelectorAll('.cascade-pill').forEach(pill => {
+                pill.classList.remove('drag-over', 'activation-drop-target');
+            });
+        };
+
         DOM.matrixCascadePills.addEventListener('dragstart', (e) => {
-            const targetPill = e.target.closest('.matrix-pill');
+            const targetPill = e.target.closest('.cascade-pill');
+            if (targetPill && targetPill.dataset.locked === 'true') {
+                e.preventDefault();
+                return;
+            }
             if (targetPill) {
                 State.draggedItem = targetPill;
                 e.dataTransfer.effectAllowed = 'move';
@@ -275,13 +430,20 @@
             const act = State.draggedActivation || (e.dataTransfer && e.dataTransfer.types.includes('text/activation'));
             if (act) {
                 e.dataTransfer.dropEffect = 'copy';
+                const targetPill = e.target.closest('.cascade-pill');
+                DOM.matrixCascadePills.querySelectorAll('.cascade-pill').forEach(pill => {
+                    pill.classList.remove('activation-drop-target');
+                });
+                if (targetPill) {
+                    targetPill.classList.add('activation-drop-target');
+                }
                 return;
             }
 
             e.dataTransfer.dropEffect = 'move';
-            const targetPill = e.target.closest('.matrix-pill');
+            const targetPill = e.target.closest('.cascade-pill');
             if (targetPill && targetPill !== State.draggedItem) {
-                DOM.matrixCascadePills.querySelectorAll('.matrix-pill').forEach(pill => {
+                DOM.matrixCascadePills.querySelectorAll('.cascade-pill').forEach(pill => {
                     pill.classList.remove('drag-over');
                 });
                 targetPill.classList.add('drag-over');
@@ -293,41 +455,58 @@
         });
 
         DOM.matrixCascadePills.addEventListener('dragleave', (e) => {
-            const targetPill = e.target.closest('.matrix-pill');
+            const targetPill = e.target.closest('.cascade-pill');
             if (targetPill) {
-                targetPill.classList.remove('drag-over');
+                targetPill.classList.remove('drag-over', 'activation-drop-target');
             }
         });
 
         DOM.matrixCascadePills.addEventListener('drop', (e) => {
             e.preventDefault();
-            DOM.matrixCascadePills.querySelectorAll('.matrix-pill').forEach(pill => {
-                pill.classList.remove('drag-over', 'ring-2', 'ring-emerald-500', 'bg-emerald-50');
-            });
 
             const act = e.dataTransfer.getData('text/activation') || State.draggedActivation;
-            const targetPill = e.target.closest('.matrix-pill');
+            const targetPill = e.target.closest('.cascade-pill');
+            const targetIndex = targetPill
+                ? State.matrixCascade.findIndex(layer => layer.id === targetPill.dataset.id)
+                : State.matrixCascade.length;
+
+            clearDropHighlights();
 
             if (act) {
-                App.setCascadeActivation(act);
+                App.addActivationLayer(act, targetPill ? targetIndex + 1 : State.matrixCascade.length);
                 return;
             }
 
             const draggedId = e.dataTransfer.getData('text/plain');
-            const targetId = targetPill ? targetPill.dataset.id : null;
-
-            if (draggedId && targetId && draggedId !== targetId) {
-                const draggedIndex = State.matrixCascade.findIndex(matrix => matrix.id === draggedId);
-                const targetIndex = State.matrixCascade.findIndex(matrix => matrix.id === targetId);
-
-                if (draggedIndex !== -1 && targetIndex !== -1) {
-                    const [removed] = State.matrixCascade.splice(draggedIndex, 1);
-                    State.matrixCascade.splice(targetIndex, 0, removed);
-                    App.renderMatrixCascade();
-                    App.fitViewToScene();
-                    App.drawScene();
-                }
+            if (!draggedId) {
+                return;
             }
+
+            if (targetPill && draggedId === targetPill.dataset.id) {
+                return;
+            }
+
+            const draggedIndex = State.matrixCascade.findIndex(layer => layer.id === draggedId);
+            if (draggedIndex === -1) {
+                return;
+            }
+
+            const [removed] = State.matrixCascade.splice(draggedIndex, 1);
+
+            if (targetPill) {
+                const adjustedTargetIndex = State.matrixCascade.findIndex(layer => layer.id === targetPill.dataset.id);
+                const insertIndex = adjustedTargetIndex === -1
+                    ? State.matrixCascade.length
+                    : adjustedTargetIndex + (draggedIndex < targetIndex ? 1 : 0);
+                State.matrixCascade.splice(insertIndex, 0, removed);
+            } else {
+                State.matrixCascade.push(removed);
+            }
+
+            App.enforceClassificationOutput();
+            App.renderMatrixCascade();
+            App.fitViewToScene();
+            App.drawScene();
         });
 
         DOM.matrixCascadePills.addEventListener('dragend', () => {
@@ -335,29 +514,8 @@
                 State.draggedItem.classList.remove('dragging');
                 State.draggedItem = null;
             }
-            DOM.matrixCascadePills.querySelectorAll('.matrix-pill').forEach(pill => {
-                pill.classList.remove('drag-over');
-            });
+            clearDropHighlights();
         });
 
-        if (DOM.cascadeActivationSlot) {
-            DOM.cascadeActivationSlot.addEventListener('dragover', (e) => {
-                if (State.draggedActivation || (e.dataTransfer && e.dataTransfer.types.includes('text/activation'))) {
-                    e.preventDefault();
-                    DOM.cascadeActivationSlot.classList.add('ring-2', 'ring-emerald-500', 'bg-emerald-100');
-                }
-            });
-            DOM.cascadeActivationSlot.addEventListener('dragleave', () => {
-                DOM.cascadeActivationSlot.classList.remove('ring-2', 'ring-emerald-500', 'bg-emerald-100');
-            });
-            DOM.cascadeActivationSlot.addEventListener('drop', (e) => {
-                const act = e.dataTransfer.getData('text/activation') || State.draggedActivation;
-                if (act) {
-                    e.preventDefault();
-                    DOM.cascadeActivationSlot.classList.remove('ring-2', 'ring-emerald-500', 'bg-emerald-100');
-                    App.setCascadeActivation(act);
-                }
-            });
-        }
     };
 })(window);

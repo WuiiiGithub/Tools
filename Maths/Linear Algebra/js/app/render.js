@@ -15,12 +15,21 @@
         return App.toCanvasCoords(viewPoint[0], viewPoint[1]);
     };
 
-    const getJacobianDeterminant = (point, activationName) => {
+    const getAxisWidth = (baseWidth, thickness) => {
+        const gridThickness = thickness ?? Config.DEFAULT_GRID_THICKNESS;
+        return Math.max(1, baseWidth * (gridThickness / Config.DEFAULT_GRID_THICKNESS));
+    };
+
+    const getJacobianDeterminant = (point, determinantFn, activationName) => {
+        if (determinantFn) {
+            return determinantFn(point);
+        }
+
         const jacobian = Activation.jacobian(point, activationName);
         return Math.abs(jacobian[0][0] * jacobian[1][1] - jacobian[0][1] * jacobian[1][0]);
     };
 
-    const getLineCompression = (activationName, determinantAtOrigin, points) => {
+    const getLineCompression = (determinantFn, activationName, determinantAtOrigin, points) => {
         if (determinantAtOrigin <= 1e-12) {
             return 0;
         }
@@ -28,7 +37,7 @@
         let total = 0;
 
         points.forEach(point => {
-            const determinant = getJacobianDeterminant(point, activationName);
+            const determinant = getJacobianDeterminant(point, determinantFn, activationName);
             total += MathCore.clamp(1 - determinant / determinantAtOrigin, 0, 1);
         });
 
@@ -69,7 +78,7 @@
             return;
         }
 
-        const dynamicFontSize = App.getDynamicFontSize(Config.VECTOR_LABEL_BASE_FONT_SIZE);
+        const dynamicFontSize = App.getDynamicFontSize(State.vectorFontSize ?? Config.VECTOR_LABEL_BASE_FONT_SIZE);
         context.fillStyle = color;
         context.font = `bold ${dynamicFontSize}px Inter`;
 
@@ -135,9 +144,18 @@
         }
 
         if (config.adaptive) {
-            const maxDepth = config.maxDepth ?? 7;
+            const renderScope = MathCore.clamp(
+                config.renderScope ?? State.renderScope ?? Config.DEFAULT_RENDER_SCOPE,
+                0,
+                1
+            );
+            const maxDepth = config.maxDepth ?? Math.round(
+                Config.MIN_ADAPTIVE_DEPTH + renderScope * (Config.MAX_ADAPTIVE_DEPTH - Config.MIN_ADAPTIVE_DEPTH)
+            );
             const minDepth = config.minDepth ?? 1;
-            const tolerance = config.tolerance ?? 0.4;
+            const tolerance = config.tolerance ?? (
+                Config.LAZY_RENDER_TOLERANCE + renderScope * (Config.FULL_RENDER_TOLERANCE - Config.LAZY_RENDER_TOLERANCE)
+            );
             const startCanvas = mapInputToCanvas(mapPoint, start);
             const endCanvas = mapInputToCanvas(mapPoint, end);
             const points = [{ input: start, canvas: startCanvas }];
@@ -196,6 +214,7 @@
                     const current = points[index];
                     const midpoint = lerpPoint(previous.input, current.input, 0.5);
                     const compression = getLineCompression(
+                        modulation.determinantFn,
                         modulation.activationName,
                         modulation.determinantAtOrigin,
                         [midpoint]
@@ -265,32 +284,38 @@
         const xLength = Math.hypot(xUnitView[0] - originView[0], xUnitView[1] - originView[1]) || 1e-9;
         const yLength = Math.hypot(yUnitView[0] - originView[0], yUnitView[1] - originView[1]) || 1e-9;
 
-        const tickStepX = MathCore.getNiceStep(spanX / Config.DESIRED_TICK_COUNT);
-        const tickStepY = MathCore.getNiceStep(spanY / Config.DESIRED_TICK_COUNT);
+        const minSpan = Math.min(spanX, spanY);
+        const maxSpan = Math.max(spanX, spanY);
+        const density = MathCore.clamp(
+            config.density ?? Config.DEFAULT_GRID_DENSITY,
+            Config.MIN_GRID_DENSITY,
+            Config.MAX_GRID_DENSITY
+        );
+        const referenceLength = Math.sqrt(Math.max(xLength, 1e-9) * Math.max(yLength, 1e-9));
+        const minimumLength = Math.min(xLength, yLength);
+        const desiredTickCount = Math.max(2, Config.DESIRED_TICK_COUNT * density);
+        const targetSpacing = Config.TARGET_GRID_SPACING / density;
+        const maxGridLines = Math.max(4, Math.round(Config.MAX_GRID_LINES * density));
+        const tickStep = MathCore.getNiceStep(minSpan / desiredTickCount);
 
-        let gridStepX = MathCore.getGridStep(tickStepX, Config.TARGET_GRID_SPACING / (State.scale * xLength));
-        let gridStepY = MathCore.getGridStep(tickStepY, Config.TARGET_GRID_SPACING / (State.scale * yLength));
+        let gridStep = MathCore.getGridStep(tickStep, targetSpacing / (State.scale * referenceLength));
+        const minimumStep = Config.MIN_GRID_SCREEN_SPACING / (State.scale * minimumLength);
 
-        const minimumStepX = Config.MIN_GRID_SCREEN_SPACING / (State.scale * xLength);
-        const minimumStepY = Config.MIN_GRID_SCREEN_SPACING / (State.scale * yLength);
-
-        if (gridStepX < minimumStepX) {
-            gridStepX = MathCore.getNiceStep(minimumStepX);
+        if (gridStep < minimumStep) {
+            gridStep = MathCore.getNiceStep(minimumStep);
         }
-        if (gridStepY < minimumStepY) {
-            gridStepY = MathCore.getNiceStep(minimumStepY);
-        }
-        if (spanX / gridStepX > Config.MAX_GRID_LINES) {
-            gridStepX = MathCore.getNiceStep(spanX / Config.MAX_GRID_LINES);
-        }
-        if (spanY / gridStepY > Config.MAX_GRID_LINES) {
-            gridStepY = MathCore.getNiceStep(spanY / Config.MAX_GRID_LINES);
+        if (maxSpan / gridStep > maxGridLines) {
+            gridStep = MathCore.getNiceStep(maxSpan / maxGridLines);
         }
 
         const baseWidth = palette.gridWidth ?? 0.6;
+        const determinantFn = config.getDeterminant || null;
         const modulation = config.modulate ? {
             activationName,
-            determinantAtOrigin: getJacobianDeterminant([0, 0], activationName),
+            determinantFn,
+            determinantAtOrigin: determinantFn
+                ? determinantFn([0, 0])
+                : getJacobianDeterminant([0, 0], null, activationName),
             alphaMin: 0.62,
             alphaMax: 1,
             baseWidth
@@ -328,8 +353,8 @@
             }
         };
 
-        drawGridLines(gridStepX, bounds.minX, bounds.maxX, true);
-        drawGridLines(gridStepY, bounds.minY, bounds.maxY, false);
+        drawGridLines(gridStep, bounds.minX, bounds.maxX, true);
+        drawGridLines(gridStep, bounds.minY, bounds.maxY, false);
 
         context.globalAlpha = 1;
         context.lineWidth = baseWidth;
@@ -348,7 +373,7 @@
             return;
         }
 
-        const dynamicFontSize = App.getDynamicFontSize(Config.AXIS_LABEL_BASE_FONT_SIZE);
+        const dynamicFontSize = App.getDynamicFontSize(State.axisFontSize ?? Config.AXIS_LABEL_BASE_FONT_SIZE);
         context.fillStyle = '#4a5568';
         context.font = `bold ${dynamicFontSize}px Inter`;
         context.textAlign = 'center';
@@ -378,7 +403,7 @@
 
     App.drawTicksAndLabels = function (context, color, mapPoint, bounds, options = {}) {
         const config = options || {};
-        const dynamicFontSize = App.getDynamicFontSize(Config.TICK_LABEL_BASE_FONT_SIZE);
+        const dynamicFontSize = App.getDynamicFontSize(State.tickFontSize ?? Config.TICK_LABEL_BASE_FONT_SIZE);
         context.fillStyle = color;
         context.font = `${dynamicFontSize}px Inter`;
         context.textAlign = 'center';
@@ -390,8 +415,8 @@
         const originCanvasCoords = App.toCanvasCoords(originViewPoint[0], originViewPoint[1]);
         const minDistanceForLabel = dynamicFontSize * 1.5;
 
-        const tickStepX = MathCore.getNiceStep((bounds.maxX - bounds.minX) / Config.DESIRED_TICK_COUNT);
-        const tickStepY = MathCore.getNiceStep((bounds.maxY - bounds.minY) / Config.DESIRED_TICK_COUNT);
+        const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+        const tickStep = MathCore.getNiceStep(span / Config.DESIRED_TICK_COUNT);
 
         const drawAxisTicks = (axis, tickStep, min, max) => {
             const firstTick = Math.floor(min / tickStep);
@@ -460,25 +485,43 @@
             }
         };
 
-        drawAxisTicks('X', tickStepX, bounds.minX, bounds.maxX);
-        drawAxisTicks('Y', tickStepY, bounds.minY, bounds.maxY);
+        drawAxisTicks('X', tickStep, bounds.minX, bounds.maxX);
+        drawAxisTicks('Y', tickStep, bounds.minY, bounds.maxY);
     };
 
-    App.drawSaturationBand = function (context, viewTransformMatrix, activationName) {
+    App.drawSaturationBand = function (context, viewTransformMatrix, activationName, activationIndex = Visuo.State.matrixCascade.length) {
         const limits = Activation.getOutputLimits(activationName);
 
         if (!limits || !isFinite(limits.min) || !isFinite(limits.max)) {
             return;
         }
 
+        const renderScope = MathCore.clamp(State.renderScope ?? Config.DEFAULT_RENDER_SCOPE, 0, 1);
         const corners = [
             [limits.min, limits.min],
             [limits.max, limits.min],
             [limits.max, limits.max],
             [limits.min, limits.max]
-        ].map(point => {
-            const viewPoint = MathCore.multiplyMatrixVector(viewTransformMatrix, point);
+        ];
+        const points = [];
+        const samplesPerEdge = Math.max(4, Math.round(6 + renderScope * 26));
+
+        const mapPoint = point => {
+            const worldPoint = App.transformPointThroughLayersFrom(point, activationIndex + 1);
+            const viewPoint = MathCore.multiplyMatrixVector(viewTransformMatrix, worldPoint);
             return App.toCanvasCoords(viewPoint[0], viewPoint[1]);
+        };
+
+        corners.forEach((corner, index) => {
+            const nextCorner = corners[(index + 1) % corners.length];
+
+            for (let sample = 0; sample < samplesPerEdge; sample++) {
+                const t = sample / samplesPerEdge;
+                points.push(mapPoint([
+                    corner[0] + (nextCorner[0] - corner[0]) * t,
+                    corner[1] + (nextCorner[1] - corner[1]) * t
+                ]));
+            }
         });
 
         const passes = [
@@ -492,7 +535,7 @@
 
         passes.forEach(pass => {
             context.beginPath();
-            corners.forEach((point, index) => {
+            points.forEach((point, index) => {
                 if (index === 0) {
                     context.moveTo(point.cx, point.cy);
                 } else {
@@ -508,26 +551,40 @@
         context.restore();
     };
 
-    App.drawCausticFold = function (context, viewTransformMatrix) {
+    App.drawCausticFold = function (context, viewTransformMatrix, activationIndex = Visuo.State.matrixCascade.length) {
         const reach = Math.hypot(DOM.canvas.width, DOM.canvas.height) / Math.max(State.scale, 1e-6);
-        const startPoint = App.toCanvasCoords(0, 0);
+        const renderScope = MathCore.clamp(State.renderScope ?? Config.DEFAULT_RENDER_SCOPE, 0, 1);
+        const samples = Math.max(8, Math.round(8 + renderScope * 40));
         const passes = [
             { color: 'rgba(251, 146, 60, 0.08)', width: 14 },
             { color: 'rgba(251, 146, 60, 0.22)', width: 6 },
             { color: 'rgba(255, 237, 213, 0.92)', width: 1.5 }
         ];
 
+        const mapPoint = point => {
+            const worldPoint = App.transformPointThroughLayersFrom(point, activationIndex + 1);
+            const viewPoint = MathCore.multiplyMatrixVector(viewTransformMatrix, worldPoint);
+            return App.toCanvasCoords(viewPoint[0], viewPoint[1]);
+        };
+
         context.save();
         context.lineCap = 'round';
 
-        [[reach, 0], [0, reach]].forEach(endPoint => {
-            const viewPoint = MathCore.multiplyMatrixVector(viewTransformMatrix, endPoint);
-            const endCanvas = App.toCanvasCoords(viewPoint[0], viewPoint[1]);
-
+        [[reach, 0], [0, reach]].forEach(axisEnd => {
             passes.forEach(pass => {
                 context.beginPath();
-                context.moveTo(startPoint.cx, startPoint.cy);
-                context.lineTo(endCanvas.cx, endCanvas.cy);
+
+                for (let sample = 0; sample <= samples; sample++) {
+                    const t = sample / samples;
+                    const point = mapPoint([axisEnd[0] * t, axisEnd[1] * t]);
+
+                    if (sample === 0) {
+                        context.moveTo(point.cx, point.cy);
+                    } else {
+                        context.lineTo(point.cx, point.cy);
+                    }
+                }
+
                 context.strokeStyle = pass.color;
                 context.lineWidth = pass.width;
                 context.stroke();
@@ -616,15 +673,26 @@
         const transformedBounds = App.getActiveVisibleBounds(cumulativeMatrix, viewTransformMatrix);
 
         const isNonlinear = App.hasNonlinearActivation();
-        const lastNonlinearActivation = State.activeActivationName || 'linear';
-        const modulateGrid = isNonlinear && State.activeActivationName !== 'relu';
+        const lastNonlinearActivation = App.getLastNonlinearActivationName();
+        const lastNonlinearLayer = App.getLastNonlinearActivationLayer();
+        const lastNonlinearIndex = lastNonlinearLayer
+            ? State.matrixCascade.indexOf(lastNonlinearLayer)
+            : State.matrixCascade.length;
+        const modulateGrid = isNonlinear && lastNonlinearActivation !== 'relu';
 
         if (DOM.showOriginalCheckbox.checked) {
             App.drawGrid(context, {
                 grid: 'rgba(29, 78, 216, 0.45)',
-                gridWidth: 0.6
-            }, originalMap, originalBounds, { sampleCount: 1 });
-            App.drawAxes(context, '#60a5fa', 2, originalMap, originalBounds, true, { sampleCount: 1 });
+                gridWidth: State.originalGridThickness
+            }, originalMap, originalBounds, {
+                sampleCount: 1,
+                density: State.originalGridDensity,
+                renderScope: State.renderScope
+            });
+            App.drawAxes(context, '#60a5fa', getAxisWidth(2, State.originalGridThickness), originalMap, originalBounds, true, {
+                sampleCount: 1,
+                renderScope: State.renderScope
+            });
             App.drawTicksAndLabels(context, '#60a5fa', originalMap, originalBounds);
             App.drawVector(context, iHatView, '#3b82f6', 4, 'X');
             App.drawVector(context, jHatView, '#3b82f6', 4, 'Y');
@@ -639,21 +707,25 @@
         if (DOM.showTransformedCheckbox.checked) {
             App.drawGrid(context, {
                 grid: 'rgba(185, 28, 28, 0.55)',
-                gridWidth: 0.6
+                gridWidth: State.transformedGridThickness
             }, transformedMap, transformedBounds, {
                 activationName: lastNonlinearActivation,
                 adaptive: isNonlinear,
-                modulate: modulateGrid
+                modulate: modulateGrid,
+                density: State.transformedGridDensity,
+                renderScope: State.renderScope,
+                getDeterminant: point => App.getCascadeJacobianDeterminant(point)
             });
 
             if (lastNonlinearActivation === 'relu') {
-                App.drawCausticFold(context, viewTransformMatrix);
+                App.drawCausticFold(context, viewTransformMatrix, lastNonlinearIndex);
             } else if (lastNonlinearActivation !== 'linear') {
-                App.drawSaturationBand(context, viewTransformMatrix, lastNonlinearActivation);
+                App.drawSaturationBand(context, viewTransformMatrix, lastNonlinearActivation, lastNonlinearIndex);
             }
 
-            App.drawAxes(context, '#f87171', 1.5, transformedMap, transformedBounds, false, {
-                adaptive: isNonlinear
+            App.drawAxes(context, '#f87171', getAxisWidth(1.5, State.transformedGridThickness), transformedMap, transformedBounds, false, {
+                adaptive: isNonlinear,
+                renderScope: State.renderScope
             });
             App.drawTicksAndLabels(context, '#f87171', transformedMap, transformedBounds);
             App.drawVector(context, transformedIHatView, '#dc2626', 4, 'X1', transformedOriginView);

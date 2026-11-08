@@ -129,6 +129,40 @@
         }
     };
 
+    App.openSettingsModal = function () {
+        if (!DOM.settingsModal) {
+            return;
+        }
+
+        DOM.settingsModal.classList.remove('hidden');
+        DOM.settingsToggleBtn.setAttribute('aria-expanded', 'true');
+        if (DOM.closeSettingsBtn) {
+            DOM.closeSettingsBtn.focus();
+        }
+    };
+
+    App.closeSettingsModal = function () {
+        if (!DOM.settingsModal) {
+            return;
+        }
+
+        DOM.settingsModal.classList.add('hidden');
+        DOM.settingsToggleBtn.setAttribute('aria-expanded', 'false');
+        DOM.settingsToggleBtn.focus();
+    };
+
+    App.toggleSettingsModal = function () {
+        if (!DOM.settingsModal) {
+            return;
+        }
+
+        if (DOM.settingsModal.classList.contains('hidden')) {
+            App.openSettingsModal();
+        } else {
+            App.closeSettingsModal();
+        }
+    };
+
     App.syncMobileRestriction = function () {
         const restricted = DOM.mobileMediaQuery.matches;
         if (restricted) {

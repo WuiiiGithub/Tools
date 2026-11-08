@@ -30,3 +30,39 @@
     border-radius: 9999px;
     background: #cbd5e1;
 }
+
+.cascade-pill.dragging {
+    opacity: 0.45;
+    border-style: dashed;
+}
+
+.cascade-pill.drag-over {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.45);
+}
+
+.cascade-pill.activation-drop-target {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.55);
+}
+
+.matrix-bracket {
+    display: inline-block;
+    width: 7px;
+    align-self: stretch;
+    border-top: 1.5px solid #94a3b8;
+    border-bottom: 1.5px solid #94a3b8;
+    border-radius: 3px;
+}
+
+.matrix-bracket-left {
+    border-left: 1.5px solid #94a3b8;
+    border-radius: 4px 0 0 4px;
+}
+
+.matrix-bracket-right {
+    border-right: 1.5px solid #94a3b8;
+    border-radius: 0 4px 4px 0;
+}
+
+.matrix-bracket-small {
+    width: 5px;
+}
