@@ -75,6 +75,8 @@
         return [transformed[0] + bias[0], transformed[1] + bias[1]];
     };
 
+    App.applyLayerForward = applyLayerForward;
+
     App.hasActivation = function (name) {
         if (App.getActivationLayers().some(layer => layer.enabled !== false && layer.name === name)) {
             return true;

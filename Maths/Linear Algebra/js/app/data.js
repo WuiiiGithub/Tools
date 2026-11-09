@@ -3,7 +3,7 @@
 
     const Visuo = global.Visuo = global.Visuo || {};
     const App = Visuo.App = Visuo.App || {};
-    const { DOM, State } = Visuo;
+    const { DOM, State, Config } = Visuo;
 
     const parseCsv = function (text) {
         const rows = [];
@@ -101,6 +101,27 @@
         select.value = values.includes(selectedValue) ? selectedValue : (values[0] || '');
     };
 
+    const setOutputOptions = function (select, values, selectedValue) {
+        if (!select) {
+            return;
+        }
+
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Choose a class column';
+        select.appendChild(placeholder);
+
+        values.forEach(value => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            select.appendChild(option);
+        });
+
+        select.value = values.includes(selectedValue) ? selectedValue : '';
+    };
+
     const isNumericValue = value => value !== '' && Number.isFinite(Number(value));
 
     const getColumnIndex = name => State.dataset.headers.indexOf(name);
@@ -156,7 +177,12 @@
     const updateClassSelectionUi = function () {
         const dataset = State.dataset;
         const classes = dataset.outputClasses || [];
-        const show = dataset.problemType === 'classification' && classes.length > 2;
+        const isClassification = dataset.valid && dataset.problemType === 'classification';
+        const show = isClassification && classes.length > 2;
+
+        if (DOM.outputColumnField) {
+            DOM.outputColumnField.classList.toggle('hidden', !isClassification);
+        }
 
         if (DOM.classSelection) {
             DOM.classSelection.classList.toggle('hidden', !show);
@@ -167,7 +193,7 @@
         }
 
         if (DOM.classSelectionHint) {
-            DOM.classSelectionHint.textContent = `Output "${dataset.outputColumn}" has ${classes.length} classes. Choose exactly two classes to keep.`;
+            DOM.classSelectionHint.textContent = `Class column "${dataset.outputColumn}" has ${classes.length} classes. Choose exactly two classes to keep.`;
         }
 
         setClassOptions(DOM.classASelect, classes, dataset.selectedClasses[0] || '');
@@ -195,6 +221,140 @@
         DOM.encodingSummary.classList.remove('hidden');
     };
 
+    const normalizeColor = (value, fallback) => /^#[0-9a-f]{6}$/i.test(value || '') ? value : fallback;
+
+    const updateClassColorsUi = function () {
+        if (!DOM.classColorRow) {
+            return;
+        }
+
+        const dataset = State.dataset;
+        const visible = dataset.problemType === 'classification' && dataset.labelMapping.length === 2;
+        DOM.classColorRow.classList.toggle('hidden', !visible);
+
+        if (!visible) {
+            return;
+        }
+
+        if (DOM.classAColorInput) {
+            DOM.classAColorInput.value = normalizeColor(dataset.classColors[0], Config.DEFAULT_CLASS_COLORS[0]);
+        }
+        if (DOM.classBColorInput) {
+            DOM.classBColorInput.value = normalizeColor(dataset.classColors[1], Config.DEFAULT_CLASS_COLORS[1]);
+        }
+        if (DOM.classAColorLabel) {
+            DOM.classAColorLabel.textContent = dataset.labelMapping[0] ? dataset.labelMapping[0].label : 'Class 1';
+        }
+        if (DOM.classBColorLabel) {
+            DOM.classBColorLabel.textContent = dataset.labelMapping[1] ? dataset.labelMapping[1].label : 'Class 2';
+        }
+    };
+
+    const updateClearButton = function () {
+        if (!DOM.clearDataBtn) {
+            return;
+        }
+
+        const canClear = State.dataset.valid;
+        DOM.clearDataBtn.disabled = !canClear;
+        DOM.clearDataBtn.classList.toggle('cursor-not-allowed', !canClear);
+        DOM.clearDataBtn.classList.toggle('opacity-50', !canClear);
+        DOM.clearDataBtn.classList.toggle('cursor-pointer', canClear);
+        DOM.clearDataBtn.classList.toggle('hover:bg-white', canClear);
+        DOM.clearDataBtn.classList.toggle('hover:text-amber-900', canClear);
+    };
+
+    const updateLoadButton = function () {
+        updateClearButton();
+
+        if (!DOM.loadPointsBtn) {
+            return;
+        }
+
+        const dataset = State.dataset;
+        const canLoad = dataset.ready && !dataset.loading;
+        DOM.loadPointsBtn.disabled = !canLoad;
+        DOM.loadPointsBtn.classList.toggle('cursor-not-allowed', !canLoad);
+        DOM.loadPointsBtn.classList.toggle('cursor-pointer', canLoad);
+        DOM.loadPointsBtn.classList.toggle('opacity-50', !canLoad);
+        DOM.loadPointsBtn.classList.toggle('hover:-translate-y-0.5', canLoad);
+
+        if (DOM.loadPointsLabel) {
+            DOM.loadPointsLabel.textContent = dataset.loading
+                ? 'Loading...'
+                : (dataset.loaded ? 'Reload points' : 'Load points');
+        }
+
+        if (DOM.loadPointsSpinner) {
+            DOM.loadPointsSpinner.classList.toggle('hidden', !dataset.loading);
+        }
+
+        if (DOM.dataLoadHint) {
+            if (dataset.loading) {
+                DOM.dataLoadHint.textContent = 'Preparing points and clearing the cascade...';
+            } else if (dataset.loaded) {
+                DOM.dataLoadHint.textContent = 'Points loaded. Add matrices or activations to transform them in the red space.';
+            } else if (dataset.ready) {
+                DOM.dataLoadHint.textContent = 'Loading clears the cascade, then plots points in the original and red transformed spaces.';
+            } else {
+                DOM.dataLoadHint.textContent = 'Complete preprocessing to load points.';
+            }
+        }
+    };
+
+    const invalidateDatasetLoad = function () {
+        const dataset = State.dataset;
+        const wasLoaded = dataset.loaded;
+        dataset.loadToken += 1;
+        dataset.loaded = false;
+        dataset.loading = false;
+        dataset.plotPoints = [];
+        updateLoadButton();
+
+        if (wasLoaded && App.drawScene) {
+            App.drawScene();
+        }
+    };
+
+    const buildDatasetPlotPoints = function () {
+        const dataset = State.dataset;
+        const rows = dataset.problemType === 'classification' ? dataset.encodedRows : dataset.rows;
+        if (!dataset.ready || !Array.isArray(rows) || rows.length === 0) {
+            return [];
+        }
+
+        const xIndex = getColumnIndex(dataset.xFeature);
+        const yIndex = getColumnIndex(dataset.yFeature);
+        const outputIndex = getColumnIndex(dataset.outputColumn);
+        if (xIndex === -1 || yIndex === -1) {
+            return [];
+        }
+
+        return rows.map(row => {
+            const point = [Number(row[xIndex]), Number(row[yIndex])];
+            if (!Number.isFinite(point[0]) || !Number.isFinite(point[1])) {
+                return null;
+            }
+
+            let classIndex = 0;
+            if (dataset.problemType === 'classification') {
+                const outputValue = row[outputIndex];
+                classIndex = dataset.labelMapping.findIndex(item => {
+                    return item.encoded === outputValue || String(item.encoded) === String(outputValue);
+                });
+                if (classIndex === -1) {
+                    classIndex = 0;
+                }
+            }
+
+            return {
+                point,
+                classIndex,
+                label: dataset.labelMapping[classIndex] ? dataset.labelMapping[classIndex].label : ''
+            };
+        }).filter(Boolean);
+    };
+
     const clearClassificationEncoding = function () {
         const dataset = State.dataset;
         dataset.outputClasses = [];
@@ -204,6 +364,7 @@
         dataset.encodedRows = null;
         updateClassSelectionUi();
         updateEncodingSummary();
+        updateClassColorsUi();
     };
 
     const buildClassificationData = function () {
@@ -218,6 +379,7 @@
             dataset.labelEncodingRequired = false;
             updateClassSelectionUi();
             updateEncodingSummary();
+            updateClassColorsUi();
             setError(`Classification output "${dataset.outputColumn}" must contain at least 2 classes.`);
             return false;
         }
@@ -235,6 +397,7 @@
                 dataset.labelEncodingRequired = false;
                 updateClassSelectionUi();
                 updateEncodingSummary();
+                updateClassColorsUi();
                 clearError();
                 setStatus(`Output "${dataset.outputColumn}" has ${classes.length} classes. Select exactly two classes to continue.`, 'warning');
                 return false;
@@ -242,8 +405,12 @@
 
             if (selectedClasses[0] === selectedClasses[1]) {
                 dataset.ready = false;
+                dataset.labelMapping = [];
+                dataset.labelEncodingRequired = false;
+                dataset.encodedRows = null;
                 updateClassSelectionUi();
                 updateEncodingSummary();
+                updateClassColorsUi();
                 setError('Select two different output classes.');
                 return false;
             }
@@ -267,11 +434,16 @@
 
         updateClassSelectionUi();
         updateEncodingSummary();
+        updateClassColorsUi();
         return true;
     };
 
     const getFeatureColumns = function () {
-        return State.dataset.headers.filter(header => header !== State.dataset.outputColumn);
+        const dataset = State.dataset;
+        if (dataset.problemType === 'classification' && dataset.outputColumn) {
+            return dataset.headers.filter(header => header !== dataset.outputColumn);
+        }
+        return dataset.headers.slice();
     };
 
     const updateFeatureSelects = function () {
@@ -296,10 +468,10 @@
         const headers = State.dataset.headers;
         let outputColumn = State.dataset.outputColumn;
         if (!headers.includes(outputColumn)) {
-            outputColumn = headers[headers.length - 1] || '';
+            outputColumn = headers.length >= 3 ? headers[headers.length - 1] : '';
         }
 
-        setSelectOptions(DOM.outputColumnSelect, headers, outputColumn);
+        setOutputOptions(DOM.outputColumnSelect, headers, outputColumn);
         State.dataset.outputColumn = outputColumn;
         updateFeatureSelects();
     };
@@ -308,29 +480,41 @@
         const dataset = State.dataset;
         if (!dataset.valid) {
             dataset.ready = false;
+            updateLoadButton();
             return false;
         }
 
         if (!dataset.problemType) {
             dataset.ready = false;
+            updateLoadButton();
             setStatus('Dataset accepted. Choose classification or regression.', 'warning');
             return false;
         }
 
-        if (!dataset.outputColumn || !dataset.xFeature || !dataset.yFeature) {
+        if (!dataset.xFeature || !dataset.yFeature) {
             dataset.ready = false;
-            setError('Choose an output variable and both X and Y features.');
+            updateLoadButton();
+            setError('Choose both X and Y input features.');
             return false;
         }
 
         if (dataset.xFeature === dataset.yFeature) {
             dataset.ready = false;
+            updateLoadButton();
             setError('X and Y features must be different columns.');
             return false;
         }
 
         if (dataset.problemType === 'classification') {
+            if (!dataset.outputColumn) {
+                dataset.ready = false;
+                updateClassSelectionUi();
+                updateLoadButton();
+                setError('Choose a class column to color the points.');
+                return false;
+            }
             if (!buildClassificationData()) {
+                updateLoadButton();
                 return false;
             }
         } else {
@@ -343,25 +527,23 @@
 
         if (!isNumericColumn(dataset.xFeature, activeRows)) {
             dataset.ready = false;
+            updateLoadButton();
             setError(`X feature "${dataset.xFeature}" must contain only numbers.`);
             return false;
         }
 
         if (!isNumericColumn(dataset.yFeature, activeRows)) {
             dataset.ready = false;
+            updateLoadButton();
             setError(`Y feature "${dataset.yFeature}" must contain only numbers.`);
-            return false;
-        }
-
-        if (dataset.problemType === 'regression' && !isNumericColumn(dataset.outputColumn, activeRows)) {
-            dataset.ready = false;
-            setError(`Regression output "${dataset.outputColumn}" must contain only numbers.`);
             return false;
         }
 
         clearError();
         dataset.ready = true;
-        setStatus(`Ready: output = ${dataset.outputColumn}, X = ${dataset.xFeature}, Y = ${dataset.yFeature}.`, 'success');
+        updateLoadButton();
+        const classSummary = dataset.problemType === 'classification' ? `, class = ${dataset.outputColumn}` : '';
+        setStatus(`Ready: X = ${dataset.xFeature}, Y = ${dataset.yFeature}${classSummary}.`, 'success');
         return true;
     };
 
@@ -369,6 +551,8 @@
         if (!State.dataset.valid) {
             return false;
         }
+
+        invalidateDatasetLoad();
 
         if (DOM.outputColumnSelect) {
             State.dataset.outputColumn = DOM.outputColumnSelect.value;
@@ -394,17 +578,6 @@
 
         clearError();
         return validateSelections();
-    };
-
-    const refreshLockState = function () {
-        if (State.dataset.problemType === 'classification') {
-            App.enforceClassificationOutput();
-        } else {
-            App.releaseClassificationOutputLock();
-        }
-        App.renderMatrixCascade();
-        App.fitViewToScene();
-        App.drawScene();
     };
 
     App.parseCsv = parseCsv;
@@ -443,8 +616,8 @@
         const headers = rows[0];
         const dataRows = rows.slice(1);
 
-        if (headers.length < 3) {
-            setError('CSV must have at least 3 columns so an output and two input features can be chosen.');
+        if (headers.length < 2) {
+            setError('CSV must have at least 2 columns so X and Y inputs can be chosen.');
             return false;
         }
 
@@ -476,7 +649,7 @@
         State.dataset.headers = headers;
         State.dataset.rows = dataRows;
         State.dataset.problemType = null;
-        State.dataset.outputColumn = headers[headers.length - 1];
+        State.dataset.outputColumn = headers.length >= 3 ? headers[headers.length - 1] : '';
         State.dataset.xFeature = '';
         State.dataset.yFeature = '';
         State.dataset.outputClasses = [];
@@ -484,6 +657,10 @@
         State.dataset.labelMapping = [];
         State.dataset.labelEncodingRequired = false;
         State.dataset.encodedRows = null;
+        State.dataset.plotPoints = [];
+        State.dataset.loaded = false;
+        State.dataset.loading = false;
+        State.dataset.loadToken += 1;
         State.dataset.valid = true;
         State.dataset.ready = false;
 
@@ -514,10 +691,126 @@
         updateOutputSelect();
         updateClassSelectionUi();
         updateEncodingSummary();
+        updateClassColorsUi();
+        updateLoadButton();
         clearError();
         setStatus(`Dataset accepted (${dataRows.length} rows, ${headers.length} columns). Choose classification or regression.`, 'warning');
-        App.releaseClassificationOutputLock();
         App.renderMatrixCascade();
+        App.fitViewToScene();
+        App.drawScene();
+        return true;
+    };
+
+    App.clearDataset = function () {
+        const dataset = State.dataset;
+        dataset.fileName = '';
+        dataset.headers = [];
+        dataset.rows = [];
+        dataset.problemType = null;
+        dataset.outputColumn = '';
+        dataset.xFeature = '';
+        dataset.yFeature = '';
+        dataset.outputClasses = [];
+        dataset.selectedClasses = [];
+        dataset.labelMapping = [];
+        dataset.labelEncodingRequired = false;
+        dataset.encodedRows = null;
+        dataset.plotPoints = [];
+        dataset.loaded = false;
+        dataset.loading = false;
+        dataset.loadToken += 1;
+        dataset.valid = false;
+        dataset.ready = false;
+
+        if (DOM.csvFileName) {
+            DOM.csvFileName.textContent = 'No file selected';
+        }
+        if (DOM.csvSummary) {
+            DOM.csvSummary.textContent = '—';
+        }
+        if (DOM.csvFileInput) {
+            DOM.csvFileInput.value = '';
+        }
+        if (DOM.problemTypeClassification) {
+            DOM.problemTypeClassification.checked = false;
+            DOM.problemTypeClassification.disabled = true;
+        }
+        if (DOM.problemTypeRegression) {
+            DOM.problemTypeRegression.checked = false;
+            DOM.problemTypeRegression.disabled = true;
+        }
+
+        [
+            { select: DOM.outputColumnSelect, label: 'Choose a class column' },
+            { select: DOM.xFeatureSelect, label: 'Import a CSV first' },
+            { select: DOM.yFeatureSelect, label: 'Import a CSV first' }
+        ].forEach(({ select, label }) => {
+            if (!select) {
+                return;
+            }
+            select.innerHTML = '';
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = label;
+            select.appendChild(option);
+            select.disabled = true;
+        });
+
+        clearError();
+        updateClassSelectionUi();
+        updateEncodingSummary();
+        updateClassColorsUi();
+        updateLoadButton();
+        setStatus('No dataset loaded. Import a CSV to begin.', 'neutral');
+        App.fitViewToScene();
+        App.drawScene();
+        App.showToast('Dataset cleared', 'info');
+        return true;
+    };
+
+    App.getDatasetPlotPoints = function () {
+        return State.dataset.plotPoints.slice();
+    };
+
+    App.loadDatasetPoints = function () {
+        const dataset = State.dataset;
+        if (!dataset.ready || dataset.loading) {
+            return false;
+        }
+
+        const loadToken = dataset.loadToken + 1;
+        dataset.loadToken = loadToken;
+        dataset.loading = true;
+        dataset.loaded = false;
+        dataset.plotPoints = [];
+        updateLoadButton();
+        setStatus('Loading points...', 'warning');
+
+        App.resetCascadeForDataLoad();
+        App.fitViewToScene();
+        App.drawScene();
+
+        setTimeout(() => {
+            if (loadToken !== dataset.loadToken || !dataset.ready) {
+                return;
+            }
+
+            dataset.loading = false;
+            dataset.loaded = true;
+            dataset.plotPoints = buildDatasetPlotPoints();
+            updateLoadButton();
+            App.fitViewToScene();
+            App.drawScene();
+            setStatus(`Loading complete — ${dataset.plotPoints.length} points ready.`, 'success');
+            App.showToast('Loading complete', 'success');
+
+            setTimeout(() => {
+                if (dataset.loaded && DOM.settingsModal && !DOM.settingsModal.classList.contains('hidden')) {
+                    App.closeSettingsModal();
+                }
+            }, Config.DATA_LOADING_CLOSE_DELAY);
+        }, Config.DATA_LOADING_DELAY);
+
         return true;
     };
 
@@ -580,7 +873,7 @@
                 DOM.yFeatureSelect.disabled = false;
             }
 
-            refreshLockState();
+            updateClassSelectionUi();
             syncSelectionsFromUi();
         };
 
@@ -638,5 +931,32 @@
                 syncSelectionsFromUi();
             });
         }
+
+        [
+            { input: DOM.classAColorInput, index: 0 },
+            { input: DOM.classBColorInput, index: 1 }
+        ].forEach(({ input, index }) => {
+            if (!input) {
+                return;
+            }
+
+            input.addEventListener('input', () => {
+                State.dataset.classColors[index] = normalizeColor(input.value, Config.DEFAULT_CLASS_COLORS[index]);
+                if (State.dataset.loaded) {
+                    App.drawScene();
+                }
+            });
+        });
+
+        if (DOM.loadPointsBtn) {
+            DOM.loadPointsBtn.addEventListener('click', App.loadDatasetPoints);
+        }
+
+        if (DOM.clearDataBtn) {
+            DOM.clearDataBtn.addEventListener('click', App.clearDataset);
+        }
+
+        updateClassColorsUi();
+        updateLoadButton();
     };
 })(window);

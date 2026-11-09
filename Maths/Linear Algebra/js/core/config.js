@@ -28,6 +28,10 @@
         TICK_LABEL_BASE_FONT_SIZE: 12,
         MIN_FONT_SIZE: 8,
         MAX_FONT_SIZE: 36,
+        DEFAULT_CLASS_COLORS: ['#10b981', '#f97316'],
+        DATA_LOADING_DELAY: 450,
+        DATA_LOADING_CLOSE_DELAY: 550,
+        POINT_TRACE_STEP_MS: 5000,
         PERSPECTIVE_BLUE_CLASSES: ['bg-blue-500', 'hover:bg-blue-600'],
         PERSPECTIVE_RED_CLASSES: ['bg-red-500', 'hover:bg-red-600']
     };

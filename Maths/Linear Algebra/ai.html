@@ -20,6 +20,7 @@
     <script defer src="js/app/cascade.js"></script>
     <script defer src="js/app/data.js"></script>
     <script defer src="js/app/interactions.js"></script>
+    <script defer src="js/app/tracer.js"></script>
     <script defer src="js/app/main.js"></script>
 </head>
 <body class="relative m-0 h-screen overflow-hidden bg-[#f0f4ff] p-0 font-sans text-gray-800 antialiased">
@@ -29,6 +30,29 @@
         <div class="absolute inset-0 bg-white">
             <canvas id="transformationCanvas" class="block h-full w-full cursor-grab bg-white"></canvas>
             <div id="vectorInfoBox" class="pointer-events-none absolute z-30 hidden flex-col gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-4 py-2.5 text-sm shadow-[0_8px_30px_rgba(15,23,42,0.12)] backdrop-blur"></div>
+        </div>
+
+        <!-- Point trace playback HUD -->
+        <div id="pointTraceHud" class="pointer-events-none fixed left-1/2 top-4 z-[70] hidden w-[min(92vw,32rem)] -translate-x-1/2">
+            <div class="pointer-events-auto rounded-2xl border border-indigo-200 bg-white/95 p-3.5 shadow-[0_20px_60px_-20px_rgba(49,46,129,0.4)] backdrop-blur">
+                <div class="flex items-start gap-3">
+                    <div class="min-w-0 flex-1">
+                        <div class="mb-1.5 flex items-center justify-between gap-3">
+                            <span id="pointTraceHudStep" class="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Step 0 of 0</span>
+                            <span id="pointTraceHudTime" class="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-indigo-700">5.0s</span>
+                        </div>
+                        <p id="pointTraceHudTitle" class="truncate text-sm font-bold tracking-tight text-slate-900">Blue input</p>
+                        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                            <div id="pointTraceHudProgress" class="h-full w-0 rounded-full bg-gradient-to-r from-blue-500 via-amber-400 to-red-500"></div>
+                        </div>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-1.5">
+                        <button id="pointTraceHudPauseBtn" type="button" class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100">Pause</button>
+                        <button id="pointTraceHudStopBtn" type="button" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50">Stop</button>
+                    </div>
+                </div>
+                <p class="mt-2 text-[10px] font-medium text-slate-400">Press Space to pause or resume. The graph stays visible while tracing.</p>
+            </div>
         </div>
 
         <!-- Floating brand -->
@@ -54,6 +78,15 @@
             </svg>
         </button>
 
+        <!-- Point trace toggle button (top right) -->
+        <button id="pointTraceToggleBtn" type="button" aria-label="Open point trace demo" aria-expanded="false" title="Trace a point through the cascade" class="fixed right-20 top-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:brightness-110 active:translate-y-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12.5 6 8l3 2 4-6"/>
+                <circle cx="2" cy="12.5" r="1.4" fill="currentColor" stroke="none"/>
+                <circle cx="13" cy="4" r="1.4" fill="currentColor" stroke="none"/>
+            </svg>
+        </button>
+
         <!-- Settings toggle button (top right) -->
         <button id="settingsToggleBtn" type="button" aria-label="Open view settings" aria-expanded="false" title="View settings" class="fixed right-4 top-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-slate-200/80 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-900 hover:shadow-xl active:translate-y-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
@@ -67,7 +100,7 @@
             <div id="settingsBackdrop" class="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"></div>
 
             <div class="relative flex min-h-full items-center justify-center p-4">
-                <div id="settingsPanel" class="flex max-h-[min(88vh,56rem)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_100px_-20px_rgba(15,23,42,0.45)]">
+                <div id="settingsPanel" class="flex max-h-[min(90vh,60rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_100px_-20px_rgba(15,23,42,0.45)]">
                     <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4">
                         <div>
                             <h3 id="settingsTitle" class="text-base font-bold tracking-tight text-slate-900">Settings</h3>
@@ -80,208 +113,332 @@
                         </button>
                     </header>
 
-                    <div class="min-h-0 flex-1 overflow-y-auto p-5">
-                        <div class="grid gap-4 md:grid-cols-2">
-                            <!-- View Section -->
-                            <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">View</h4>
-                                <div class="grid grid-cols-1 gap-2">
-                                    <label for="showOriginal" class="flex cursor-pointer items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-blue-300 hover:bg-blue-50">
-                                        <span class="flex items-center gap-2 text-sm text-slate-700">
-                                            <span class="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
-                                            Original
-                                        </span>
-                                        <input type="checkbox" id="showOriginal" class="h-4 w-4 cursor-pointer accent-blue-500" checked>
-                                    </label>
-                                    <label for="showTransformed" class="flex cursor-pointer items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-red-300 hover:bg-red-50">
-                                        <span class="flex items-center gap-2 text-sm text-slate-700">
-                                            <span class="h-2.5 w-2.5 rounded-full bg-red-500"></span>
-                                            Transformed
-                                        </span>
-                                        <input type="checkbox" id="showTransformed" class="h-4 w-4 cursor-pointer accent-red-500" checked>
-                                    </label>
-                                </div>
-                            </section>
-
-                            <!-- Grid Section -->
-                            <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Thickness</h4>
-                                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                    <label for="originalGridThickness" class="block rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5">
-                                        <span class="flex items-center justify-between text-xs font-medium text-slate-600">
-                                            <span class="flex items-center gap-2"><span class="h-1 w-5 rounded-full bg-blue-500"></span>Blue</span>
-                                            <span id="originalGridThicknessValue" class="font-mono text-blue-600">0.6</span>
-                                        </span>
-                                        <input type="range" id="originalGridThickness" min="0.1" max="4" step="0.1" value="0.6" class="mt-2 w-full cursor-pointer accent-blue-500">
-                                    </label>
-                                    <label for="transformedGridThickness" class="block rounded-xl border border-red-100 bg-red-50/60 px-3 py-2.5">
-                                        <span class="flex items-center justify-between text-xs font-medium text-slate-600">
-                                            <span class="flex items-center gap-2"><span class="h-1 w-5 rounded-full bg-red-500"></span>Red</span>
-                                            <span id="transformedGridThicknessValue" class="font-mono text-red-600">0.6</span>
-                                        </span>
-                                        <input type="range" id="transformedGridThickness" min="0.1" max="4" step="0.1" value="0.6" class="mt-2 w-full cursor-pointer accent-red-500">
-                                    </label>
-                                </div>
-
-                                <h4 class="mb-3 mt-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Grid Density</h4>
-                                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                    <label for="originalGridDensity" class="block rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5">
-                                        <span class="flex items-center justify-between text-xs font-medium text-slate-600">
-                                            <span class="flex items-center gap-2"><span class="h-1 w-5 rounded-full bg-blue-500"></span>Blue</span>
-                                            <span id="originalGridDensityValue" class="font-mono text-blue-600">1.0×</span>
-                                        </span>
-                                        <input type="range" id="originalGridDensity" min="0.5" max="2.5" step="0.1" value="1" class="mt-2 w-full cursor-pointer accent-blue-500">
-                                    </label>
-                                    <label for="transformedGridDensity" class="block rounded-xl border border-red-100 bg-red-50/60 px-3 py-2.5">
-                                        <span class="flex items-center justify-between text-xs font-medium text-slate-600">
-                                            <span class="flex items-center gap-2"><span class="h-1 w-5 rounded-full bg-red-500"></span>Red</span>
-                                            <span id="transformedGridDensityValue" class="font-mono text-red-600">1.0×</span>
-                                        </span>
-                                        <input type="range" id="transformedGridDensity" min="0.5" max="2.5" step="0.1" value="1" class="mt-2 w-full cursor-pointer accent-red-500">
-                                    </label>
-                                </div>
-                            </section>
-
-                            <!-- Rendering Section -->
-                            <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Render Scope</h4>
-                                <label for="renderScope" class="block rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                                    <span class="flex items-center justify-between text-xs font-medium text-slate-600">
-                                        <span>Detail</span>
-                                        <span id="renderScopeValue" class="font-mono text-slate-700">100%</span>
+                    <div class="flex min-h-0 flex-1">
+                        <aside class="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-slate-50/80">
+                            <p class="px-4 pb-2 pt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Settings sections</p>
+                            <nav id="settingsTabs" class="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
+                                <button type="button" role="tab" id="settingsTabView" aria-controls="settingsPaneView" aria-selected="true" tabindex="0" data-settings-tab="view" class="settings-tab flex w-full items-center gap-3 rounded-xl bg-slate-900 px-3 py-2.5 text-left text-white shadow-sm shadow-slate-900/20 transition-all">
+                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>
                                     </span>
-                                    <input type="range" id="renderScope" min="0" max="1" step="0.05" value="1" class="mt-2 w-full cursor-pointer accent-slate-700">
+                                    <span class="min-w-0">
+                                        <span class="block text-sm font-semibold">View</span>
+                                        <span class="block truncate text-[10px] text-white/60">Spaces and quality</span>
+                                    </span>
+                                </button>
+                                <button type="button" role="tab" id="settingsTabGrid" aria-controls="settingsPaneGrid" aria-selected="false" tabindex="-1" data-settings-tab="grid" class="settings-tab flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900">
+                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-200/80 text-slate-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5V5h3V2H2.5zM6 2v3h4V2H6zm5 0v3h3V2.5a.5.5 0 0 0-.5-.5H11zM2 6v4h3V6H2zm4 0v4h4V6H6zm5 0v4h3V6h-3zM2 11v2.5a.5.5 0 0 0 .5.5H5v-3H2zm4 0v3h4v-3H6zm5 0v3h2.5a.5.5 0 0 0 .5-.5V11h-3z"/></svg>
+                                    </span>
+                                    <span class="min-w-0">
+                                        <span class="block text-sm font-semibold">Grid</span>
+                                        <span class="block truncate text-[10px] text-slate-400">Thickness and density</span>
+                                    </span>
+                                </button>
+                                <button type="button" role="tab" id="settingsTabTypography" aria-controls="settingsPaneTypography" aria-selected="false" tabindex="-1" data-settings-tab="typography" class="settings-tab flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900">
+                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-200/80 text-slate-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2a.5.5 0 0 0 0 1h3.5v10.5a.5.5 0 0 0 1 0V3h3.5a.5.5 0 0 0 0-1h-8z"/><path d="M11 6.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-.75v5.75a.5.5 0 0 1-1 0V7H11a.5.5 0 0 1-.5-.5z"/></svg>
+                                    </span>
+                                    <span class="min-w-0">
+                                        <span class="block text-sm font-semibold">Typography</span>
+                                        <span class="block truncate text-[10px] text-slate-400">Canvas label sizes</span>
+                                    </span>
+                                </button>
+                                <button type="button" role="tab" id="settingsTabData" aria-controls="settingsPaneData" aria-selected="false" tabindex="-1" data-settings-tab="data" class="settings-tab flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900">
+                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1c-2.21 0-4 .895-4 2s1.79 2 4 2 4-.895 4-2-1.79-2-4-2zM4 4.5V6c0 1.105 1.79 2 4 2s4-.895 4-2V4.5c-.9.6-2.35 1-4 1s-3.1-.4-4-1zM4 8.5V10c0 1.105 1.79 2 4 2s4-.895 4-2V8.5c-.9.6-2.35 1-4 1s-3.1-.4-4-1zM4 12.5V14c0 1.105 1.79 2 4 2s4-.895 4-2v-1.5c-.9.6-2.35 1-4 1s-3.1-.4-4-1z"/></svg>
+                                    </span>
+                                    <span class="min-w-0">
+                                        <span class="block text-sm font-semibold">Data</span>
+                                        <span class="block truncate text-[10px] text-slate-400">CSV and point classes</span>
+                                    </span>
+                                </button>
+                            </nav>
+                            <div class="m-3 rounded-2xl border border-slate-200 bg-white/80 p-3 text-[11px] leading-relaxed text-slate-500">
+                                <span class="mb-1 flex items-center gap-1.5 font-semibold text-slate-700">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                    Live preview
+                                </span>
+                                Changes apply instantly to the canvas.
+                            </div>
+                        </aside>
+
+                        <div class="min-h-0 flex-1 overflow-y-auto bg-white p-5 sm:p-6">
+                            <section id="settingsPaneView" data-settings-pane="view" role="tabpanel" aria-labelledby="settingsTabView" class="space-y-4">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-500">Canvas</p>
+                                    <h4 class="mt-1 text-lg font-bold tracking-tight text-slate-900">View and rendering</h4>
+                                    <p class="mt-1 text-xs leading-relaxed text-slate-500">Choose which coordinate spaces are visible and balance visual detail against rendering speed.</p>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <p class="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Visible spaces</p>
+                                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        <label for="showOriginal" class="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50">
+                                            <span class="flex items-center gap-2.5 text-sm font-medium text-slate-700">
+                                                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                                                    <span class="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+                                                </span>
+                                                Original space
+                                            </span>
+                                            <input type="checkbox" id="showOriginal" class="h-4 w-4 cursor-pointer accent-blue-500" checked>
+                                        </label>
+                                        <label for="showTransformed" class="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 transition-colors hover:border-red-300 hover:bg-red-50">
+                                            <span class="flex items-center gap-2.5 text-sm font-medium text-slate-700">
+                                                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-red-100 text-red-600">
+                                                    <span class="h-2.5 w-2.5 rounded-full bg-red-500"></span>
+                                                </span>
+                                                Red transformed space
+                                            </span>
+                                            <input type="checkbox" id="showTransformed" class="h-4 w-4 cursor-pointer accent-red-500" checked>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <div class="mb-3 flex items-start justify-between gap-3">
+                                        <div>
+                                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Render detail</p>
+                                            <p class="mt-1 text-[11px] leading-relaxed text-slate-500">Lower values simplify curved sampling for speed; higher values render every refinement.</p>
+                                        </div>
+                                        <span id="renderScopeValue" class="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-mono text-xs font-semibold text-slate-700">100%</span>
+                                    </div>
+                                    <input type="range" id="renderScope" min="0" max="1" step="0.05" value="1" class="w-full cursor-pointer accent-slate-700">
                                     <span class="mt-1 flex justify-between text-[10px] font-medium uppercase tracking-wider text-slate-400">
                                         <span>Lazy</span>
                                         <span>Full</span>
                                     </span>
-                                </label>
-                                <p class="mt-2 text-[11px] leading-relaxed text-slate-500">Lower values simplify curved sampling for speed; higher values render every refinement.</p>
-                            </section>
-
-                            <!-- Font Sizes Section -->
-                            <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Font Sizes</h4>
-                                <div class="space-y-2">
-                                    <label for="tickFontSize" class="block rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                                        <span class="flex items-center justify-between text-xs font-medium text-slate-600">
-                                            <span>Tick labels</span>
-                                            <span id="tickFontSizeValue" class="font-mono text-slate-700">12px</span>
-                                        </span>
-                                        <input type="range" id="tickFontSize" min="8" max="36" step="1" value="12" class="mt-2 w-full cursor-pointer accent-slate-700">
-                                    </label>
-                                    <label for="axisFontSize" class="block rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                                        <span class="flex items-center justify-between text-xs font-medium text-slate-600">
-                                            <span>Axis labels</span>
-                                            <span id="axisFontSizeValue" class="font-mono text-slate-700">18px</span>
-                                        </span>
-                                        <input type="range" id="axisFontSize" min="8" max="36" step="1" value="18" class="mt-2 w-full cursor-pointer accent-slate-700">
-                                    </label>
-                                    <label for="vectorFontSize" class="block rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                                        <span class="flex items-center justify-between text-xs font-medium text-slate-600">
-                                            <span>Vector labels</span>
-                                            <span id="vectorFontSizeValue" class="font-mono text-slate-700">14px</span>
-                                        </span>
-                                        <input type="range" id="vectorFontSize" min="8" max="36" step="1" value="14" class="mt-2 w-full cursor-pointer accent-slate-700">
-                                    </label>
                                 </div>
                             </section>
 
-                            <!-- Data Section -->
-                            <section id="dataSection" class="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 md:col-span-2">
-                                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                    <div>
-                                        <h4 class="text-xs font-semibold uppercase tracking-wider text-amber-800">Data</h4>
-                                        <p class="mt-1 text-[11px] text-amber-700">Import a CSV with at least 3 columns and no empty cells.</p>
-                                    </div>
-                                    <span class="rounded-full border border-amber-200 bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">CSV</span>
+                            <section id="settingsPaneGrid" data-settings-pane="grid" role="tabpanel" aria-labelledby="settingsTabGrid" class="hidden space-y-4">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-500">Grid</p>
+                                    <h4 class="mt-1 text-lg font-bold tracking-tight text-slate-900">Grid appearance</h4>
+                                    <p class="mt-1 text-xs leading-relaxed text-slate-500">Tune each coordinate space independently so the original and transformed grids stay readable.</p>
                                 </div>
 
                                 <div class="grid gap-4 lg:grid-cols-2">
-                                    <div class="space-y-3">
-                                        <label id="csvDropZone" for="csvFileInput" class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-amber-300 bg-white/70 px-4 py-5 text-center transition-colors hover:border-amber-400 hover:bg-white">
-                                            <span class="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-                                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                                                    <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
-                                                </svg>
-                                            </span>
-                                            <span class="text-sm font-semibold text-slate-700">Choose a CSV file</span>
-                                            <span class="text-[11px] text-slate-500">or drag and drop it here</span>
-                                        </label>
-                                        <input id="csvFileInput" type="file" accept=".csv,text/csv" class="hidden">
-                                        <div class="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-xs">
-                                            <span id="csvFileName" class="max-w-[70%] truncate font-medium text-slate-600">No file selected</span>
-                                            <span id="csvSummary" class="shrink-0 font-mono text-amber-700">—</span>
+                                    <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                                        <div class="mb-3 flex items-center justify-between gap-2">
+                                            <p class="flex items-center gap-2 text-sm font-bold text-blue-900"><span class="h-2.5 w-2.5 rounded-full bg-blue-500"></span>Original grid</p>
+                                            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600">Blue</span>
                                         </div>
-                                        <div id="csvError" class="hidden rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"></div>
-                                        <div id="csvStatus" class="rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-500">Import a dataset to configure the output and input features.</div>
+                                        <label for="originalGridThickness" class="block rounded-xl border border-blue-100 bg-white/80 px-3 py-2.5">
+                                            <span class="flex items-center justify-between text-xs font-medium text-slate-600">
+                                                <span>Line thickness</span>
+                                                <span id="originalGridThicknessValue" class="font-mono text-blue-600">0.6</span>
+                                            </span>
+                                            <input type="range" id="originalGridThickness" min="0.1" max="4" step="0.1" value="0.6" class="mt-2 w-full cursor-pointer accent-blue-500">
+                                        </label>
+                                        <label for="originalGridDensity" class="mt-2 block rounded-xl border border-blue-100 bg-white/80 px-3 py-2.5">
+                                            <span class="flex items-center justify-between text-xs font-medium text-slate-600">
+                                                <span>Density</span>
+                                                <span id="originalGridDensityValue" class="font-mono text-blue-600">1.0×</span>
+                                            </span>
+                                            <input type="range" id="originalGridDensity" min="0.5" max="2.5" step="0.1" value="1" class="mt-2 w-full cursor-pointer accent-blue-500">
+                                        </label>
                                     </div>
 
-                                    <div class="space-y-3">
-                                        <fieldset>
-                                            <legend class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-amber-800">Problem type</legend>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <label class="flex cursor-pointer flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50">
-                                                    <span class="flex items-center gap-2 font-semibold text-slate-700">
-                                                        <input type="radio" id="problemTypeClassification" name="problemType" value="classification" class="h-4 w-4 accent-emerald-600" disabled>
-                                                        Classification
-                                                    </span>
-                                                    <span class="text-[10px] leading-snug text-slate-500">Locks the final cascade layer to sigmoid.</span>
-                                                </label>
-                                                <label class="flex cursor-pointer flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors hover:border-blue-300 hover:bg-blue-50">
-                                                    <span class="flex items-center gap-2 font-semibold text-slate-700">
-                                                        <input type="radio" id="problemTypeRegression" name="problemType" value="regression" class="h-4 w-4 accent-blue-600" disabled>
-                                                        Regression
-                                                    </span>
-                                                    <span class="text-[10px] leading-snug text-slate-500">Numeric output, no forced activation.</span>
-                                                </label>
-                                            </div>
-                                        </fieldset>
+                                    <div class="rounded-2xl border border-red-100 bg-red-50/60 p-4">
+                                        <div class="mb-3 flex items-center justify-between gap-2">
+                                            <p class="flex items-center gap-2 text-sm font-bold text-red-900"><span class="h-2.5 w-2.5 rounded-full bg-red-500"></span>Transformed grid</p>
+                                            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-600">Red</span>
+                                        </div>
+                                        <label for="transformedGridThickness" class="block rounded-xl border border-red-100 bg-white/80 px-3 py-2.5">
+                                            <span class="flex items-center justify-between text-xs font-medium text-slate-600">
+                                                <span>Line thickness</span>
+                                                <span id="transformedGridThicknessValue" class="font-mono text-red-600">0.6</span>
+                                            </span>
+                                            <input type="range" id="transformedGridThickness" min="0.1" max="4" step="0.1" value="0.6" class="mt-2 w-full cursor-pointer accent-red-500">
+                                        </label>
+                                        <label for="transformedGridDensity" class="mt-2 block rounded-xl border border-red-100 bg-white/80 px-3 py-2.5">
+                                            <span class="flex items-center justify-between text-xs font-medium text-slate-600">
+                                                <span>Density</span>
+                                                <span id="transformedGridDensityValue" class="font-mono text-red-600">1.0×</span>
+                                            </span>
+                                            <input type="range" id="transformedGridDensity" min="0.5" max="2.5" step="0.1" value="1" class="mt-2 w-full cursor-pointer accent-red-500">
+                                        </label>
+                                    </div>
+                                </div>
+                            </section>
 
-                                        <div class="space-y-2">
-                                            <label for="outputColumnSelect" class="block">
-                                                <span class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-amber-800">Output variable</span>
-                                                <select id="outputColumnSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
+                            <section id="settingsPaneTypography" data-settings-pane="typography" role="tabpanel" aria-labelledby="settingsTabTypography" class="hidden space-y-4">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-500">Typography</p>
+                                    <h4 class="mt-1 text-lg font-bold tracking-tight text-slate-900">Canvas labels</h4>
+                                    <p class="mt-1 text-xs leading-relaxed text-slate-500">Adjust label sizes for ticks, axes, and vectors to keep dense grids comfortable to read.</p>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <div class="space-y-2">
+                                        <label for="tickFontSize" class="block rounded-xl border border-slate-200 bg-white px-3 py-3">
+                                            <span class="flex items-center justify-between text-xs font-medium text-slate-600">
+                                                <span>Tick labels</span>
+                                                <span id="tickFontSizeValue" class="font-mono text-slate-700">12px</span>
+                                            </span>
+                                            <input type="range" id="tickFontSize" min="8" max="36" step="1" value="12" class="mt-2 w-full cursor-pointer accent-slate-700">
+                                        </label>
+                                        <label for="axisFontSize" class="block rounded-xl border border-slate-200 bg-white px-3 py-3">
+                                            <span class="flex items-center justify-between text-xs font-medium text-slate-600">
+                                                <span>Axis labels</span>
+                                                <span id="axisFontSizeValue" class="font-mono text-slate-700">18px</span>
+                                            </span>
+                                            <input type="range" id="axisFontSize" min="8" max="36" step="1" value="18" class="mt-2 w-full cursor-pointer accent-slate-700">
+                                        </label>
+                                        <label for="vectorFontSize" class="block rounded-xl border border-slate-200 bg-white px-3 py-3">
+                                            <span class="flex items-center justify-between text-xs font-medium text-slate-600">
+                                                <span>Vector labels</span>
+                                                <span id="vectorFontSizeValue" class="font-mono text-slate-700">14px</span>
+                                            </span>
+                                            <input type="range" id="vectorFontSize" min="8" max="36" step="1" value="14" class="mt-2 w-full cursor-pointer accent-slate-700">
+                                        </label>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section id="settingsPaneData" data-settings-pane="data" role="tabpanel" aria-labelledby="settingsTabData" class="hidden space-y-4">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">Dataset</p>
+                                    <h4 class="mt-1 text-lg font-bold tracking-tight text-slate-900">Points and classes</h4>
+                                    <p class="mt-1 text-xs leading-relaxed text-slate-500">Import CSV data, choose the two numeric inputs, and optionally use a class column to color the points.</p>
+                                </div>
+
+                                <div class="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+                                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <p class="text-[11px] font-bold uppercase tracking-wider text-amber-800">CSV import</p>
+                                            <p class="mt-1 text-[11px] text-amber-700">At least two columns are required; no empty cells.</p>
+                                        </div>
+                                        <button id="clearDataBtn" type="button" disabled class="cursor-not-allowed rounded-xl border border-amber-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-amber-700 opacity-50 transition-colors hover:bg-white hover:text-amber-900 disabled:hover:bg-white/80">Clear data</button>
+                                    </div>
+
+                                    <label id="csvDropZone" for="csvFileInput" class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-amber-300 bg-white/70 px-4 py-5 text-center transition-colors hover:border-amber-400 hover:bg-white">
+                                        <span class="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                                <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                                            </svg>
+                                        </span>
+                                        <span class="text-sm font-semibold text-slate-700">Choose a CSV file</span>
+                                        <span class="text-[11px] text-slate-500">or drag and drop it here</span>
+                                    </label>
+                                    <input id="csvFileInput" type="file" accept=".csv,text/csv" class="hidden">
+                                    <div class="mt-3 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-xs">
+                                        <span id="csvFileName" class="max-w-[70%] truncate font-medium text-slate-600">No file selected</span>
+                                        <span id="csvSummary" class="shrink-0 font-mono text-amber-700">—</span>
+                                    </div>
+                                    <div id="csvError" class="mt-2 hidden rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"></div>
+                                    <div id="csvStatus" aria-live="polite" class="mt-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-500">Import a dataset to choose inputs and optional point classes.</div>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <fieldset>
+                                        <legend class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">Problem type</legend>
+                                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            <label class="flex cursor-pointer flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50">
+                                                <span class="flex items-center gap-2 font-semibold text-slate-700">
+                                                    <input type="radio" id="problemTypeClassification" name="problemType" value="classification" class="h-4 w-4 accent-emerald-600" disabled>
+                                                    Classification
+                                                </span>
+                                                <span class="text-[10px] leading-snug text-slate-500">Use a class column to color points. The cascade stays fully editable.</span>
+                                            </label>
+                                            <label class="flex cursor-pointer flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors hover:border-blue-300 hover:bg-blue-50">
+                                                <span class="flex items-center gap-2 font-semibold text-slate-700">
+                                                    <input type="radio" id="problemTypeRegression" name="problemType" value="regression" class="h-4 w-4 accent-blue-600" disabled>
+                                                    Regression
+                                                </span>
+                                                <span class="text-[10px] leading-snug text-slate-500">Use the two numeric inputs directly; any extra column is ignored.</span>
+                                            </label>
+                                        </div>
+                                    </fieldset>
+
+                                    <div class="mt-4 border-t border-slate-200 pt-4">
+                                        <div class="mb-3 flex items-start justify-between gap-2">
+                                            <div>
+                                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Input mapping</p>
+                                                <p class="mt-1 text-[11px] leading-snug text-slate-500">Every point uses exactly two numeric features.</p>
+                                            </div>
+                                            <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ring-1 ring-slate-200">X / Y</span>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <label for="xFeatureSelect" class="block">
+                                                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">X feature</span>
+                                                <select id="xFeatureSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
                                                     <option value="">Import a CSV first</option>
                                                 </select>
                                             </label>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <label for="xFeatureSelect" class="block">
-                                                    <span class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-amber-800">X feature</span>
-                                                    <select id="xFeatureSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
-                                                        <option value="">Import a CSV first</option>
-                                                    </select>
-                                                </label>
-                                                <label for="yFeatureSelect" class="block">
-                                                    <span class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-amber-800">Y feature</span>
-                                                    <select id="yFeatureSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
-                                                        <option value="">Import a CSV first</option>
-                                                    </select>
-                                                </label>
-                                            </div>
-
-                                            <div id="classSelection" class="hidden rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
-                                                <p class="text-[11px] font-semibold uppercase tracking-wider text-emerald-800">Select 2 classes</p>
-                                                <p id="classSelectionHint" class="mt-1 text-[11px] leading-snug text-emerald-700"></p>
-                                                <div class="mt-2 grid grid-cols-2 gap-2">
-                                                    <label for="classASelect" class="block">
-                                                        <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Class 1</span>
-                                                        <select id="classASelect" class="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15">
-                                                            <option value="">Select class</option>
-                                                        </select>
-                                                    </label>
-                                                    <label for="classBSelect" class="block">
-                                                        <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Class 2</span>
-                                                        <select id="classBSelect" class="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15">
-                                                            <option value="">Select class</option>
-                                                        </select>
-                                                    </label>
-                                                </div>
-                                            </div>
-
-                                            <div id="encodingSummary" class="hidden rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-[11px] font-medium text-emerald-800"></div>
+                                            <label for="yFeatureSelect" class="block">
+                                                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Y feature</span>
+                                                <select id="yFeatureSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
+                                                    <option value="">Import a CSV first</option>
+                                                </select>
+                                            </label>
                                         </div>
+
+                                        <div id="outputColumnField" class="mt-3 hidden">
+                                            <label for="outputColumnSelect" class="block">
+                                                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Class column</span>
+                                                <select id="outputColumnSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15" disabled>
+                                                    <option value="">Choose a class column</option>
+                                                </select>
+                                            </label>
+                                            <p class="mt-1 text-[10px] leading-snug text-slate-400">Used only to assign point colors; it is never treated as an input feature.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="classSelection" class="hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Select 2 classes</p>
+                                    <p id="classSelectionHint" class="mt-1 text-[11px] leading-snug text-emerald-700"></p>
+                                    <div class="mt-3 grid grid-cols-2 gap-2">
+                                        <label for="classASelect" class="block">
+                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Class 1</span>
+                                            <select id="classASelect" class="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15">
+                                                <option value="">Select class</option>
+                                            </select>
+                                        </label>
+                                        <label for="classBSelect" class="block">
+                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Class 2</span>
+                                            <select id="classBSelect" class="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15">
+                                                <option value="">Select class</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div id="encodingSummary" class="hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-[11px] font-medium text-emerald-800"></div>
+
+                                <div id="classColorRow" class="hidden rounded-2xl border border-emerald-200 bg-white/80 p-4">
+                                    <div class="mb-3 flex items-center justify-between gap-2">
+                                        <div>
+                                            <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Point colors</p>
+                                            <p class="mt-1 text-[10px] leading-snug text-slate-500">Defaults are green and orange; choose any two colors.</p>
+                                        </div>
+                                        <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Custom</span>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <label for="classAColor" class="flex items-center justify-between gap-2 rounded-xl border border-emerald-100 bg-emerald-50/60 px-2.5 py-2">
+                                            <span id="classAColorLabel" class="truncate text-xs font-semibold text-emerald-900">Class 1</span>
+                                            <input type="color" id="classAColor" value="#10b981" class="h-7 w-9 cursor-pointer rounded-md border border-emerald-200 bg-white p-0.5">
+                                        </label>
+                                        <label for="classBColor" class="flex items-center justify-between gap-2 rounded-xl border border-orange-100 bg-orange-50/60 px-2.5 py-2">
+                                            <span id="classBColorLabel" class="truncate text-xs font-semibold text-orange-900">Class 2</span>
+                                            <input type="color" id="classBColor" value="#f97316" class="h-7 w-9 cursor-pointer rounded-md border border-orange-200 bg-white p-0.5">
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <div class="min-w-0">
+                                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Visualization</p>
+                                            <p id="dataLoadHint" class="mt-1 text-[11px] leading-snug text-slate-500">Complete preprocessing to load points.</p>
+                                        </div>
+                                        <button id="loadPointsBtn" type="button" disabled class="flex shrink-0 cursor-not-allowed items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white opacity-50 shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0 disabled:hover:translate-y-0">
+                                            <span id="loadPointsSpinner" class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+                                            <span id="loadPointsLabel">Load points</span>
+                                        </button>
                                     </div>
                                 </div>
                             </section>
@@ -289,8 +446,107 @@
                     </div>
 
                     <footer class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
-                        <span class="text-xs text-slate-500">Changes apply instantly.</span>
+                        <span class="text-xs text-slate-500">Canvas and dataset settings are saved instantly.</span>
                         <button id="doneSettingsBtn" type="button" class="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0">Done</button>
+                    </footer>
+                </div>
+            </div>
+        </div>
+
+        <!-- Point trace modal -->
+        <div id="pointTraceModal" class="fixed inset-0 z-[90] hidden" role="dialog" aria-modal="true" aria-labelledby="pointTraceTitle">
+            <div id="pointTraceBackdrop" class="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"></div>
+
+            <div class="relative flex min-h-full items-center justify-center p-4">
+                <div class="flex max-h-[min(90vh,44rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_100px_-20px_rgba(15,23,42,0.45)]">
+                    <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4">
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-500">Point inspector</p>
+                            <h3 id="pointTraceTitle" class="mt-1 text-base font-bold tracking-tight text-slate-900">Trace one point</h3>
+                            <p class="mt-0.5 text-xs text-slate-500">Follow a blue input through every matrix and activation, one step at a time with adjustable timing.</p>
+                        </div>
+                        <button id="closePointTraceBtn" type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700" aria-label="Close point trace">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                            </svg>
+                        </button>
+                    </header>
+
+                    <div class="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 p-5 sm:p-6">
+                        <div class="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                            <div class="space-y-4">
+                                <div class="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
+                                    <div class="mb-3 flex items-start justify-between gap-3">
+                                        <div>
+                                            <p class="text-[11px] font-bold uppercase tracking-wider text-blue-800">Blue input</p>
+                                            <p class="mt-1 text-[11px] leading-snug text-blue-700">Coordinates in the original XY space.</p>
+                                        </div>
+                                        <span class="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600">P0</span>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <label for="pointTraceXInput" class="block">
+                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-blue-700">X</span>
+                                            <input id="pointTraceXInput" type="number" step="0.1" value="3" class="w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-center font-mono text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/15">
+                                        </label>
+                                        <label for="pointTraceYInput" class="block">
+                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-blue-700">Y</span>
+                                            <input id="pointTraceYInput" type="number" step="0.1" value="1.5" class="w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-center font-mono text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/15">
+                                        </label>
+                                    </div>
+                                    <div class="mt-3 flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-white/80 px-3 py-2">
+                                        <label for="pointTraceStepDuration" class="text-xs font-medium text-slate-600">Step duration</label>
+                                        <span class="flex items-center gap-1.5">
+                                            <input id="pointTraceStepDuration" type="number" min="1" max="300" step="1" value="5" class="w-16 rounded-lg border border-blue-200 bg-white px-2 py-1 text-center font-mono text-sm font-semibold text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/15">
+                                            <span class="text-xs font-medium text-slate-500">seconds</span>
+                                        </span>
+                                    </div>
+                                    <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-2">
+                                        <button id="pointTraceStartBtn" type="button" class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-indigo-700 active:translate-y-0">Start demo</button>
+                                        <button id="pointTracePauseBtn" type="button" disabled class="cursor-not-allowed rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700 opacity-60 transition-colors hover:bg-indigo-100 disabled:hover:bg-indigo-50">Pause</button>
+                                        <button id="pointTraceStopBtn" type="button" disabled class="cursor-not-allowed rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-500 opacity-60 transition-colors hover:bg-slate-50 disabled:hover:bg-white">Stop</button>
+                                    </div>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Active cascade</p>
+                                    <p id="pointTraceCascade" class="mt-2 break-words rounded-xl bg-slate-50 px-3 py-2 font-mono text-xs font-semibold text-slate-700">No active layers</p>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <div class="mb-2 flex items-center justify-between gap-3">
+                                        <span id="pointTraceStepLabel" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Ready</span>
+                                        <span id="pointTraceCountdown" class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-slate-600">Idle</span>
+                                    </div>
+                                    <div class="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                        <div id="pointTraceProgress" class="h-full w-0 rounded-full bg-gradient-to-r from-blue-500 via-amber-400 to-red-500"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <p id="pointTraceStepTitle" class="text-sm font-bold tracking-tight text-slate-900">Blue input</p>
+                                    <pre id="pointTraceStepDetail" class="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-slate-600">Enter a point and start the demo.</pre>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <p class="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Steps</p>
+                                    <div id="pointTraceStepList" class="space-y-1.5">
+                                        <p class="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400">Steps appear after the demo starts.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Result</p>
+                            <p id="pointTraceFinal" class="mt-1 font-mono text-xs font-semibold leading-relaxed text-slate-700">Start the demo to trace the point.</p>
+                        </div>
+                    </div>
+
+                    <footer class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
+                        <span class="text-xs text-slate-500">Each cascade step stays on screen for the selected duration.</span>
+                        <span class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Space to pause</span>
                     </footer>
                 </div>
             </div>
@@ -426,6 +682,10 @@
                 <button id="doneControlsBtn" type="button" class="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0">Done</button>
             </footer>
         </aside>
+    </div>
+
+    <div id="appToast" aria-live="polite" class="pointer-events-none fixed left-1/2 top-6 z-[120] hidden -translate-x-1/2">
+        <div id="appToastText" class="rounded-full border border-emerald-200 bg-white/95 px-5 py-2.5 text-sm font-semibold text-emerald-800 shadow-xl shadow-emerald-900/10 backdrop-blur"></div>
     </div>
 
     <!-- Mobile restriction -->

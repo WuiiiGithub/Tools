@@ -631,6 +631,36 @@
         context.closePath();
     };
 
+    App.drawDatasetPoints = function (context, mapPoint) {
+        const dataset = State.dataset;
+        if (!dataset || !dataset.loaded || !Array.isArray(dataset.plotPoints) || dataset.plotPoints.length === 0) {
+            return;
+        }
+
+        dataset.plotPoints.forEach(item => {
+            const viewPoint = mapPoint(item.point);
+            const canvasPoint = App.toCanvasCoords(viewPoint[0], viewPoint[1]);
+            if (!Number.isFinite(canvasPoint.cx) || !Number.isFinite(canvasPoint.cy)) {
+                return;
+            }
+
+            const color = dataset.classColors[item.classIndex]
+                || Config.DEFAULT_CLASS_COLORS[item.classIndex]
+                || Config.DEFAULT_CLASS_COLORS[0];
+
+            context.save();
+            context.beginPath();
+            context.arc(canvasPoint.cx, canvasPoint.cy, 5.5, 0, Math.PI * 2);
+            context.fillStyle = color;
+            context.globalAlpha = 0.95;
+            context.fill();
+            context.lineWidth = 1.5;
+            context.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+            context.stroke();
+            context.restore();
+        });
+    };
+
     App.drawScene = function () {
         const context = DOM.ctx;
         context.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
@@ -702,6 +732,8 @@
             } else if (State.hoveredVector === 'Y') {
                 App.drawProjectionLines(context, jHatView, '#3b82f6');
             }
+
+            App.drawDatasetPoints(context, originalMap);
         }
 
         if (DOM.showTransformedCheckbox.checked) {
@@ -736,6 +768,8 @@
             } else if (!isNonlinear && State.hoveredVector === 'X2') {
                 App.drawProjectionLines(context, transformedJHatView, '#dc2626');
             }
+
+            App.drawDatasetPoints(context, transformedMap);
         }
 
         let customVectorInOriginalBasis = null;
@@ -782,5 +816,9 @@
             App.drawOriginDot(context, '#dc2626', transformedOriginView);
         }
         App.drawOriginDot(context, '#000000');
+
+        if (typeof App.drawPointTrace === 'function') {
+            App.drawPointTrace(context, viewTransformMatrix);
+        }
     };
 })(window);

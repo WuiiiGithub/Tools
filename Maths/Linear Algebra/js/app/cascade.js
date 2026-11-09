@@ -16,88 +16,23 @@
 
     const getMatrixNumber = matrix => App.getMatrixLayers().indexOf(matrix) + 1;
 
-    App.isClassificationMode = function () {
-        return !!(State.dataset && State.dataset.valid && State.dataset.problemType === 'classification');
-    };
+    App.resetCascadeForDataLoad = function () {
+        State.matrixCascade = [];
+        State.activeActivationName = 'linear';
+        State.editingMatrixId = null;
+        State.draggedItem = null;
+        State.draggedActivation = null;
 
-    App.getLockedOutputActivation = function () {
-        if (!App.isClassificationMode()) {
-            return null;
+        if (App.resetEditor) {
+            App.resetEditor();
         }
 
-        const lastLayer = State.matrixCascade[State.matrixCascade.length - 1];
-        return lastLayer && App.isActivationLayer(lastLayer) && lastLayer.name === 'sigmoid'
-            ? lastLayer
-            : null;
-    };
-
-    App.isLayerLocked = function (layer) {
-        const lockedLayer = App.getLockedOutputActivation();
-        return !!lockedLayer && !!layer && lockedLayer.id === layer.id;
-    };
-
-    App.releaseClassificationOutputLock = function () {
-        State.matrixCascade.forEach(layer => {
-            if (App.isActivationLayer(layer)) {
-                layer.lockedOutput = false;
-            }
-        });
-    };
-
-    App.enforceClassificationOutput = function () {
-        if (!App.isClassificationMode()) {
-            App.releaseClassificationOutputLock();
-            return false;
-        }
-
-        State.matrixCascade.forEach(layer => {
-            if (App.isActivationLayer(layer)) {
-                layer.lockedOutput = false;
-            }
-        });
-
-        const lastLayer = State.matrixCascade[State.matrixCascade.length - 1];
-        if (lastLayer && App.isActivationLayer(lastLayer)) {
-            const changed = lastLayer.name !== 'sigmoid' || lastLayer.enabled === false || lastLayer.lockedOutput !== true;
-            lastLayer.name = 'sigmoid';
-            lastLayer.enabled = true;
-            lastLayer.lockedOutput = true;
-            return changed;
-        }
-
-        let sigmoidIndex = -1;
-        State.matrixCascade.forEach((layer, index) => {
-            if (App.isActivationLayer(layer) && layer.name === 'sigmoid') {
-                sigmoidIndex = index;
-            }
-        });
-
-        if (sigmoidIndex >= 0) {
-            const [sigmoidLayer] = State.matrixCascade.splice(sigmoidIndex, 1);
-            sigmoidLayer.enabled = true;
-            sigmoidLayer.lockedOutput = true;
-            State.matrixCascade.push(sigmoidLayer);
-        } else {
-            State.matrixCascade.push({
-                id: MathCore.generateUniqueId(),
-                type: 'activation',
-                name: 'sigmoid',
-                enabled: true,
-                lockedOutput: true
-            });
-        }
-
-        return true;
+        App.renderMatrixCascade();
+        return State.matrixCascade;
     };
 
     App.getCascadeInsertionIndex = function (requestedIndex) {
-        const lockedLayer = App.getLockedOutputActivation();
-        const index = Math.max(0, Math.min(State.matrixCascade.length, requestedIndex));
-        if (!lockedLayer) {
-            return index;
-        }
-
-        return Math.min(index, State.matrixCascade.indexOf(lockedLayer));
+        return Math.max(0, Math.min(State.matrixCascade.length, requestedIndex));
     };
 
     const buildMatrixVisual = (values, bias) => `
@@ -137,24 +72,21 @@
             if (App.isActivationLayer(layer)) {
                 const pill = document.createElement('div');
                 const formula = getActivationFormula(layer.name);
-                const locked = App.isLayerLocked(layer);
-                pill.className = `cascade-pill activation-pill group relative flex flex-col gap-2 rounded-xl border p-3.5 text-sm shadow-sm transition-all hover:shadow-md ${locked ? 'cursor-default border-amber-400 bg-amber-50/90 text-amber-950 ring-2 ring-amber-200' : 'cursor-grab border-emerald-300 bg-emerald-50/90 text-emerald-900'}`;
+                pill.className = 'cascade-pill activation-pill group relative flex cursor-grab flex-col gap-2 rounded-xl border border-emerald-300 bg-emerald-50/90 p-3.5 text-sm text-emerald-900 shadow-sm transition-all hover:shadow-md';
                 pill.dataset.id = layer.id;
                 pill.dataset.index = index;
                 pill.dataset.layerType = 'activation';
-                pill.dataset.locked = locked ? 'true' : 'false';
-                pill.draggable = !locked;
+                pill.draggable = true;
 
                 pill.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
-                            <input type="checkbox" class="activation-enable-toggle h-[18px] w-[18px] cursor-pointer accent-emerald-500 disabled:cursor-not-allowed" data-id="${layer.id}" ${layer.enabled !== false ? 'checked' : ''} ${locked ? 'disabled' : ''} title="${locked ? 'Classification output activation is locked' : (layer.enabled !== false ? 'Disable Activation Layer' : 'Enable Activation Layer')}">
-                            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${locked ? 'bg-amber-600' : 'bg-emerald-600'} text-[11px] font-black text-white shadow-sm">f(·)</span>
-                            <span class="font-bold ${locked ? 'text-amber-950' : 'text-emerald-950'}">Activation <span class="uppercase">${layer.name}</span></span>
+                            <input type="checkbox" class="activation-enable-toggle h-[18px] w-[18px] cursor-pointer accent-emerald-500" data-id="${layer.id}" ${layer.enabled !== false ? 'checked' : ''} title="${layer.enabled !== false ? 'Disable Activation Layer' : 'Enable Activation Layer'}">
+                            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-[11px] font-black text-white shadow-sm">f(·)</span>
+                            <span class="font-bold text-emerald-950">Activation <span class="uppercase">${layer.name}</span></span>
                         </div>
                         <div class="flex items-center gap-1.5">
-                            ${locked ? '<span class="rounded-full bg-amber-200/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">Output locked</span>' : ''}
-                            <button class="activation-delete-btn flex items-center justify-center rounded-md p-1 ${locked ? 'cursor-not-allowed bg-slate-300 text-slate-500' : 'bg-red-500 text-white hover:bg-red-600'}" data-id="${layer.id}" ${locked ? 'disabled' : ''} title="${locked ? 'Classification output activation cannot be deleted' : 'Delete Activation Layer'}">
+                            <button class="activation-delete-btn flex items-center justify-center rounded-md bg-red-500 p-1 text-white hover:bg-red-600" data-id="${layer.id}" title="Delete Activation Layer">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
                                     <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.5a.5.5 0 0 0 0 1h.5V14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3.5h.5a.5.5 0 0 0 0-1H11ZM4.5 3h7A.5.5 0 0 1 12 3.5v10.5a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V3.5a.5.5 0 0 1 .5-.5Z"/>
                                 </svg>
@@ -162,8 +94,8 @@
                         </div>
                     </div>
                     <div class="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                        <span class="rounded-md bg-white/80 px-2 py-1 font-mono font-semibold ${locked ? 'text-amber-700 ring-amber-200' : 'text-emerald-700 ring-emerald-200'} ring-1">f(x, y) = ${formula.pair}</span>
-                        <span class="font-medium ${locked ? 'text-amber-700' : 'text-emerald-600'}">${locked ? 'required for classification' : 'applies to layers above'}</span>
+                        <span class="rounded-md bg-white/80 px-2 py-1 font-mono font-semibold text-emerald-700 ring-1 ring-emerald-200">f(x, y) = ${formula.pair}</span>
+                        <span class="font-medium text-emerald-600">applies to layers above</span>
                     </div>
                 `;
 
@@ -272,33 +204,24 @@
 
         State.activeActivationName = 'linear';
         State.matrixCascade.splice(index, 0, layer);
-        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();
     };
 
     App.deleteActivationLayer = function (id) {
-        const layer = State.matrixCascade.find(item => item.id === id);
-        if (App.isLayerLocked(layer)) {
-            return;
-        }
-
         State.matrixCascade = State.matrixCascade.filter(item => item.id !== id);
         if (!App.hasExplicitActivationLayers()) {
             State.activeActivationName = 'linear';
         }
-        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();
     };
 
     App.clearCascadeActivations = function () {
-        const lockedLayer = App.getLockedOutputActivation();
-        State.matrixCascade = State.matrixCascade.filter(layer => !App.isActivationLayer(layer) || (lockedLayer && layer.id === lockedLayer.id));
+        State.matrixCascade = State.matrixCascade.filter(layer => !App.isActivationLayer(layer));
         State.activeActivationName = 'linear';
-        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();
@@ -306,10 +229,6 @@
 
     App.setCascadeActivation = function (activationName) {
         const name = activationName || 'linear';
-        if (App.isClassificationMode() && name !== 'sigmoid') {
-            return;
-        }
-
         const activations = App.getActivationLayers();
 
         if (activations.length === 0) {
@@ -330,14 +249,6 @@
     App.toggleLayerEnabled = function (id, enabled) {
         const layer = State.matrixCascade.find(item => item.id === id);
         if (!layer) {
-            return;
-        }
-
-        if (App.isLayerLocked(layer)) {
-            layer.enabled = true;
-            App.renderMatrixCascade();
-            App.fitViewToScene();
-            App.drawScene();
             return;
         }
 
@@ -407,7 +318,6 @@
             enabled: true
         });
 
-        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();
@@ -469,7 +379,6 @@
 
     App.deleteMatrix = function (id) {
         State.matrixCascade = State.matrixCascade.filter(item => item.id !== id);
-        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();
@@ -494,7 +403,6 @@
             enabled: matrixToDuplicate.enabled
         });
 
-        App.enforceClassificationOutput();
         App.renderMatrixCascade();
         App.fitViewToScene();
         App.drawScene();

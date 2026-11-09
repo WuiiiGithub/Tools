@@ -129,6 +129,9 @@
     };
 
     App.fitViewToScene = function () {
+        const datasetInputPoints = State.dataset && State.dataset.loaded && Array.isArray(State.dataset.plotPoints)
+            ? State.dataset.plotPoints.map(item => item.point)
+            : [];
         const inputPoints = [
             [0, 0],
             [1, 0],
@@ -137,7 +140,7 @@
             [-1, 0],
             [0, -1],
             [-1, -1]
-        ];
+        ].concat(datasetInputPoints);
         const transformedPoints = inputPoints.map(point => {
             return App.transformPointThroughCascade(point);
         });

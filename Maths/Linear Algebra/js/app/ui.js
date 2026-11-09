@@ -4,6 +4,39 @@
     const Visuo = global.Visuo = global.Visuo || {};
     const App = Visuo.App = Visuo.App || {};
     const { DOM, State, Config, Math: MathCore } = Visuo;
+    let toastTimer = null;
+
+    App.showToast = function (message, type = 'info', duration = 2600) {
+        if (!DOM.appToast || !DOM.appToastText) {
+            return;
+        }
+
+        if (toastTimer) {
+            clearTimeout(toastTimer);
+            toastTimer = null;
+        }
+
+        DOM.appToastText.textContent = message;
+        DOM.appToastText.classList.remove(
+            'border-emerald-200', 'text-emerald-800', 'shadow-emerald-900/10',
+            'border-slate-200', 'text-slate-700', 'shadow-slate-900/10',
+            'border-red-200', 'text-red-700', 'shadow-red-900/10'
+        );
+
+        if (type === 'success') {
+            DOM.appToastText.classList.add('border-emerald-200', 'text-emerald-800', 'shadow-emerald-900/10');
+        } else if (type === 'error') {
+            DOM.appToastText.classList.add('border-red-200', 'text-red-700', 'shadow-red-900/10');
+        } else {
+            DOM.appToastText.classList.add('border-slate-200', 'text-slate-700', 'shadow-slate-900/10');
+        }
+
+        DOM.appToast.classList.remove('hidden');
+        toastTimer = setTimeout(() => {
+            DOM.appToast.classList.add('hidden');
+            toastTimer = null;
+        }, duration);
+    };
 
     App.showMessage = function (message, type = 'info') {
         DOM.messageBoxText.textContent = message;
@@ -129,6 +162,34 @@
         }
     };
 
+    App.setSettingsTab = function (tabName) {
+        const nextTab = tabName || 'view';
+        State.settingsTab = nextTab;
+
+        DOM.settingsTabButtons.forEach(button => {
+            const active = button.dataset.settingsTab === nextTab;
+            button.setAttribute('aria-selected', String(active));
+            button.tabIndex = active ? 0 : -1;
+            button.classList.toggle('bg-slate-900', active);
+            button.classList.toggle('text-white', active);
+            button.classList.toggle('shadow-sm', active);
+            button.classList.toggle('shadow-slate-900/20', active);
+            button.classList.toggle('text-slate-600', !active);
+            button.classList.toggle('hover:bg-slate-100', !active);
+            button.classList.toggle('hover:text-slate-900', !active);
+
+            const caption = button.querySelector('span.min-w-0 > span:last-child');
+            if (caption) {
+                caption.classList.toggle('text-white/60', active);
+                caption.classList.toggle('text-slate-400', !active);
+            }
+        });
+
+        DOM.settingsTabPanes.forEach(pane => {
+            pane.classList.toggle('hidden', pane.dataset.settingsPane !== nextTab);
+        });
+    };
+
     App.openSettingsModal = function () {
         if (!DOM.settingsModal) {
             return;
@@ -136,6 +197,7 @@
 
         DOM.settingsModal.classList.remove('hidden');
         DOM.settingsToggleBtn.setAttribute('aria-expanded', 'true');
+        App.setSettingsTab(State.settingsTab || 'view');
         if (DOM.closeSettingsBtn) {
             DOM.closeSettingsBtn.focus();
         }

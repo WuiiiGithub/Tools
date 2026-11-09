@@ -40,6 +40,11 @@
             labelMapping: [],
             labelEncodingRequired: false,
             encodedRows: null,
+            classColors: Visuo.Config.DEFAULT_CLASS_COLORS.slice(),
+            plotPoints: [],
+            loaded: false,
+            loading: false,
+            loadToken: 0,
             valid: false,
             ready: false
         },
@@ -49,9 +54,21 @@
         currentEditorIsInverse: false,
 
         perspectiveMode: 'original',
+        settingsTab: 'view',
 
         transformModeActive: false,
         customVectorInputCoords: [1, 1],
+
+        pointTrace: {
+            active: false,
+            playing: false,
+            paused: false,
+            finished: false,
+            inputPoint: [3, 1.5],
+            steps: [],
+            stepIndex: 0,
+            stepDurationMs: Visuo.Config.POINT_TRACE_STEP_MS
+        },
 
         draggedItem: null,
         draggedActivation: null,

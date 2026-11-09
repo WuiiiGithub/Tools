@@ -75,6 +75,14 @@
             }
         }
 
+        if (DOM.settingsTabButtons) {
+            DOM.settingsTabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    App.setSettingsTab(button.dataset.settingsTab);
+                });
+            });
+        }
+
         const gridThicknessControls = [
             {
                 slider: DOM.originalGridThicknessSlider,
@@ -386,6 +394,11 @@
                 return;
             }
 
+            if (DOM.pointTraceModal && !DOM.pointTraceModal.classList.contains('hidden')) {
+                App.closePointTrace();
+                return;
+            }
+
             if (DOM.settingsModal && !DOM.settingsModal.classList.contains('hidden')) {
                 App.closeSettingsModal();
                 return;
@@ -411,10 +424,6 @@
 
         DOM.matrixCascadePills.addEventListener('dragstart', (e) => {
             const targetPill = e.target.closest('.cascade-pill');
-            if (targetPill && targetPill.dataset.locked === 'true') {
-                e.preventDefault();
-                return;
-            }
             if (targetPill) {
                 State.draggedItem = targetPill;
                 e.dataTransfer.effectAllowed = 'move';
@@ -503,7 +512,6 @@
                 State.matrixCascade.push(removed);
             }
 
-            App.enforceClassificationOutput();
             App.renderMatrixCascade();
             App.fitViewToScene();
             App.drawScene();

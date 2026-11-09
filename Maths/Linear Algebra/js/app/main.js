@@ -11,6 +11,9 @@
         if (App.initDataSection) {
             App.initDataSection();
         }
+        if (App.initPointTrace) {
+            App.initPointTrace();
+        }
         State.matrixCascade.push({
             id: MathCore.generateUniqueId(),
             type: 'matrix',
