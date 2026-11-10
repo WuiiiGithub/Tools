@@ -11,6 +11,9 @@
         if (App.initDataSection) {
             App.initDataSection();
         }
+        if (App.initLab) {
+            App.initLab();
+        }
         if (App.initPointTrace) {
             App.initPointTrace();
         }

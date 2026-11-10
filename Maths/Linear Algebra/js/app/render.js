@@ -44,6 +44,16 @@
         return total / points.length;
     };
 
+    const mergeBounds = (...boundsList) => {
+        const validBounds = boundsList.filter(Boolean);
+        return {
+            minX: Math.min(...validBounds.map(bounds => bounds.minX)),
+            maxX: Math.max(...validBounds.map(bounds => bounds.maxX)),
+            minY: Math.min(...validBounds.map(bounds => bounds.minY)),
+            maxY: Math.max(...validBounds.map(bounds => bounds.maxY))
+        };
+    };
+
     App.drawVector = function (context, vector, color, lineWidth = 3, label = null, startPoint = [0, 0]) {
         const startCanvas = App.toCanvasCoords(startPoint[0], startPoint[1]);
         const endCanvas = App.toCanvasCoords(vector[0], vector[1]);
@@ -666,41 +676,42 @@
         context.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
 
         const cumulativeMatrix = App.computeCumulativeMatrix();
-
-        let viewTransformMatrix = [
-            [1, 0],
-            [0, 1]
-        ];
-
-        const transformedIHatGlobal = App.transformPointThroughCascade([1, 0]);
-        const transformedJHatGlobal = App.transformPointThroughCascade([0, 1]);
-        const transformedOriginGlobal = App.transformPointThroughCascade([0, 0]);
-
-        if (State.perspectiveMode === 'transformed') {
-            const deltaX = transformedIHatGlobal[0] - transformedOriginGlobal[0];
-            const deltaY = transformedIHatGlobal[1] - transformedOriginGlobal[1];
-            const angleOfTransformedIHat = Math.atan2(deltaY, deltaX);
-            const cosTheta = Math.cos(-angleOfTransformedIHat);
-            const sinTheta = Math.sin(-angleOfTransformedIHat);
-            viewTransformMatrix = [
-                [cosTheta, -sinTheta],
-                [sinTheta, cosTheta]
-            ];
-        }
+        const viewTransformMatrix = App.getViewTransformMatrix();
+        const tracePreview = typeof App.getPointTracePreview === 'function'
+            ? App.getPointTracePreview()
+            : null;
+        const previewMap = tracePreview ? tracePreview.map : App.transformPointThroughCascade;
 
         const iHat = [1, 0];
         const jHat = [0, 1];
 
         const iHatView = MathCore.multiplyMatrixVector(viewTransformMatrix, iHat);
         const jHatView = MathCore.multiplyMatrixVector(viewTransformMatrix, jHat);
+        const transformedIHatGlobal = previewMap([1, 0]);
+        const transformedJHatGlobal = previewMap([0, 1]);
+        const transformedOriginGlobal = previewMap([0, 0]);
         const transformedIHatView = MathCore.multiplyMatrixVector(viewTransformMatrix, transformedIHatGlobal);
         const transformedJHatView = MathCore.multiplyMatrixVector(viewTransformMatrix, transformedJHatGlobal);
         const transformedOriginView = MathCore.multiplyMatrixVector(viewTransformMatrix, transformedOriginGlobal);
 
         const originalMap = point => MathCore.multiplyMatrixVector(viewTransformMatrix, point);
         const originalBounds = App.getVisibleBounds(viewTransformMatrix);
-        const transformedMap = point => App.mapScenePoint(point, cumulativeMatrix, viewTransformMatrix);
-        const transformedBounds = App.getActiveVisibleBounds(cumulativeMatrix, viewTransformMatrix);
+        const transformedMap = point => {
+            const transformed = previewMap(point);
+            return MathCore.multiplyMatrixVector(viewTransformMatrix, transformed);
+        };
+        const finalTransformedBounds = App.getActiveVisibleBounds(cumulativeMatrix, viewTransformMatrix);
+        const transformedBounds = tracePreview
+            ? mergeBounds(originalBounds, finalTransformedBounds)
+            : finalTransformedBounds;
+        const viewMap = point => MathCore.multiplyMatrixVector(viewTransformMatrix, point);
+        const drawDataset = (context, mapPoint, space) => {
+            const drawnByLab = typeof App.drawLabDatasetPoints === 'function'
+                && App.drawLabDatasetPoints(context, mapPoint, space, viewMap);
+            if (!drawnByLab) {
+                App.drawDatasetPoints(context, mapPoint);
+            }
+        };
 
         const isNonlinear = App.hasNonlinearActivation();
         const lastNonlinearActivation = App.getLastNonlinearActivationName();
@@ -708,7 +719,10 @@
         const lastNonlinearIndex = lastNonlinearLayer
             ? State.matrixCascade.indexOf(lastNonlinearLayer)
             : State.matrixCascade.length;
-        const modulateGrid = isNonlinear && lastNonlinearActivation !== 'relu';
+        const modulateGrid = !tracePreview && isNonlinear && lastNonlinearActivation !== 'relu';
+        const adaptiveTransformedRender = tracePreview
+            ? isNonlinear || tracePreview.stage.kind === 'activation'
+            : isNonlinear;
 
         if (DOM.showOriginalCheckbox.checked) {
             App.drawGrid(context, {
@@ -733,7 +747,7 @@
                 App.drawProjectionLines(context, jHatView, '#3b82f6');
             }
 
-            App.drawDatasetPoints(context, originalMap);
+            drawDataset(context, originalMap, 'original');
         }
 
         if (DOM.showTransformedCheckbox.checked) {
@@ -742,21 +756,23 @@
                 gridWidth: State.transformedGridThickness
             }, transformedMap, transformedBounds, {
                 activationName: lastNonlinearActivation,
-                adaptive: isNonlinear,
+                adaptive: adaptiveTransformedRender,
                 modulate: modulateGrid,
                 density: State.transformedGridDensity,
                 renderScope: State.renderScope,
                 getDeterminant: point => App.getCascadeJacobianDeterminant(point)
             });
 
-            if (lastNonlinearActivation === 'relu') {
-                App.drawCausticFold(context, viewTransformMatrix, lastNonlinearIndex);
-            } else if (lastNonlinearActivation !== 'linear') {
-                App.drawSaturationBand(context, viewTransformMatrix, lastNonlinearActivation, lastNonlinearIndex);
+            if (!tracePreview) {
+                if (lastNonlinearActivation === 'relu') {
+                    App.drawCausticFold(context, viewTransformMatrix, lastNonlinearIndex);
+                } else if (lastNonlinearActivation !== 'linear') {
+                    App.drawSaturationBand(context, viewTransformMatrix, lastNonlinearActivation, lastNonlinearIndex);
+                }
             }
 
             App.drawAxes(context, '#f87171', getAxisWidth(1.5, State.transformedGridThickness), transformedMap, transformedBounds, false, {
-                adaptive: isNonlinear,
+                adaptive: adaptiveTransformedRender,
                 renderScope: State.renderScope
             });
             App.drawTicksAndLabels(context, '#f87171', transformedMap, transformedBounds);
@@ -769,7 +785,7 @@
                 App.drawProjectionLines(context, transformedJHatView, '#dc2626');
             }
 
-            App.drawDatasetPoints(context, transformedMap);
+            drawDataset(context, transformedMap, 'transformed');
         }
 
         let customVectorInOriginalBasis = null;
@@ -808,11 +824,17 @@
                 endPointCanvas.cx + 10,
                 endPointCanvas.cy + 10
             );
+        } else if (State.selectedPointInfo) {
+            App.showVectorInfoBox(
+                State.selectedPointInfo.html,
+                State.selectedPointInfo.x,
+                State.selectedPointInfo.y
+            );
         } else {
             App.hideVectorInfoBox();
         }
 
-        if (DOM.showTransformedCheckbox.checked && isNonlinear) {
+        if (DOM.showTransformedCheckbox.checked && (isNonlinear || tracePreview)) {
             App.drawOriginDot(context, '#dc2626', transformedOriginView);
         }
         App.drawOriginDot(context, '#000000');

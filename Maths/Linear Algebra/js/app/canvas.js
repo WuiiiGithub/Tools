@@ -32,6 +32,28 @@
         return MathCore.multiplyMatrixVector(vMatrix, transformed);
     };
 
+    App.getViewTransformMatrix = function () {
+        if (State.perspectiveMode !== 'transformed') {
+            return [
+                [1, 0],
+                [0, 1]
+            ];
+        }
+
+        const transformedOrigin = App.transformPointThroughCascade([0, 0]);
+        const transformedIHat = App.transformPointThroughCascade([1, 0]);
+        const deltaX = transformedIHat[0] - transformedOrigin[0];
+        const deltaY = transformedIHat[1] - transformedOrigin[1];
+        const angleOfTransformedIHat = Math.atan2(deltaY, deltaX);
+        const cosTheta = Math.cos(-angleOfTransformedIHat);
+        const sinTheta = Math.sin(-angleOfTransformedIHat);
+
+        return [
+            [cosTheta, -sinTheta],
+            [sinTheta, cosTheta]
+        ];
+    };
+
     App.toCanvasCoords = function (x, y) {
         return {
             cx: State.centerX + x * State.scale + State.offsetX,

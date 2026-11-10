@@ -35,6 +35,8 @@
             outputColumn: '',
             xFeature: '',
             yFeature: '',
+            targetXFeature: '',
+            targetYFeature: '',
             outputClasses: [],
             selectedClasses: [],
             labelMapping: [],
@@ -66,8 +68,37 @@
             finished: false,
             inputPoint: [3, 1.5],
             steps: [],
+            stages: [],
             stepIndex: 0,
-            stepDurationMs: Visuo.Config.POINT_TRACE_STEP_MS
+            stepDurationMs: Visuo.Config.POINT_TRACE_STEP_MS,
+            animate: true,
+            animationT: 1
+        },
+
+        selectedPointInfo: null,
+
+        lab: {
+            step: 'datahub',
+            search: '',
+            activeDatasetName: '',
+            pendingDataset: null,
+            training: {
+                active: false,
+                playing: false,
+                complete: false,
+                epoch: 0,
+                epochs: 50,
+                history: [],
+                model: null,
+                scaler: null,
+                validationSplit: 0.2,
+                learningRate: 0.03,
+                predictions: [],
+                metrics: null,
+                showPredictions: false,
+                reportOpen: false,
+                timer: null
+            }
         },
 
         draggedItem: null,

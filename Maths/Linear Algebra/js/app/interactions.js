@@ -6,15 +6,64 @@
     const { DOM, State, Config, Math: MathCore } = Visuo;
 
     App.initInteractions = function () {
+        let pointerDownX = 0;
+        let pointerDownY = 0;
+        let pointerMoved = false;
+
+        const findDatasetPointAt = (mouseX, mouseY) => {
+            const dataset = State.dataset;
+            if (!dataset || !dataset.loaded || !Array.isArray(dataset.plotPoints) || dataset.plotPoints.length === 0) {
+                return null;
+            }
+
+            const viewTransformMatrix = App.getViewTransformMatrix();
+            const tracePreview = typeof App.getPointTracePreview === 'function'
+                ? App.getPointTracePreview()
+                : null;
+            const redMap = tracePreview ? tracePreview.map : App.transformPointThroughCascade;
+            const hitThreshold = 14;
+            let closestHit = null;
+            let closestDistance = hitThreshold;
+
+            dataset.plotPoints.forEach(item => {
+                const candidates = [];
+
+                if (DOM.showOriginalCheckbox.checked) {
+                    candidates.push(MathCore.multiplyMatrixVector(viewTransformMatrix, item.point));
+                }
+                if (DOM.showTransformedCheckbox.checked) {
+                    candidates.push(MathCore.multiplyMatrixVector(viewTransformMatrix, redMap(item.point)));
+                }
+
+                candidates.forEach(viewPoint => {
+                    const canvasPoint = App.toCanvasCoords(viewPoint[0], viewPoint[1]);
+                    const distance = Math.hypot(mouseX - canvasPoint.cx, mouseY - canvasPoint.cy);
+                    if (distance <= closestDistance) {
+                        closestDistance = distance;
+                        closestHit = { item, canvasPoint };
+                    }
+                });
+            });
+
+            return closestHit;
+        };
+
         DOM.actionButton.addEventListener('click', App.addMatrix);
         DOM.cancelEditButton.addEventListener('click', App.resetEditor);
         DOM.computeInverseBtn.addEventListener('click', App.computeAndDisplayInverse);
 
-        DOM.showOriginalCheckbox.addEventListener('change', App.drawScene);
-        DOM.showTransformedCheckbox.addEventListener('change', App.drawScene);
+        DOM.showOriginalCheckbox.addEventListener('change', () => {
+            State.selectedPointInfo = null;
+            App.drawScene();
+        });
+        DOM.showTransformedCheckbox.addEventListener('change', () => {
+            State.selectedPointInfo = null;
+            App.drawScene();
+        });
 
         DOM.perspectiveToggleBtn.addEventListener('click', () => {
             State.perspectiveMode = State.perspectiveMode === 'original' ? 'transformed' : 'original';
+            State.selectedPointInfo = null;
             App.applyPerspectiveButtonStyle();
             App.drawScene();
         });
@@ -254,6 +303,9 @@
 
         DOM.canvas.addEventListener('mousedown', (e) => {
             State.isDragging = true;
+            pointerDownX = e.clientX;
+            pointerDownY = e.clientY;
+            pointerMoved = false;
             DOM.canvas.classList.remove('cursor-grab');
             DOM.canvas.classList.add('cursor-grabbing');
             State.lastMouseX = e.clientX;
@@ -268,6 +320,10 @@
                 State.offsetY += deltaY;
                 State.lastMouseX = e.clientX;
                 State.lastMouseY = e.clientY;
+                if (Math.hypot(e.clientX - pointerDownX, e.clientY - pointerDownY) > 4) {
+                    pointerMoved = true;
+                    State.selectedPointInfo = null;
+                }
             } else {
                 const mouseCanvasX = e.clientX - DOM.canvas.getBoundingClientRect().left;
                 const mouseCanvasY = e.clientY - DOM.canvas.getBoundingClientRect().top;
@@ -348,6 +404,28 @@
             DOM.canvas.classList.add('cursor-grab');
         });
 
+        DOM.canvas.addEventListener('click', (e) => {
+            if (pointerMoved) {
+                pointerMoved = false;
+                return;
+            }
+
+            const rect = DOM.canvas.getBoundingClientRect();
+            const hit = findDatasetPointAt(e.clientX - rect.left, e.clientY - rect.top);
+
+            if (hit) {
+                State.selectedPointInfo = {
+                    html: App.buildPointInfoMarkup(hit.item),
+                    x: MathCore.clamp(hit.canvasPoint.cx + 12, 8, Math.max(8, DOM.canvas.width - 260)),
+                    y: MathCore.clamp(hit.canvasPoint.cy + 12, 8, Math.max(8, DOM.canvas.height - 120))
+                };
+            } else {
+                State.selectedPointInfo = null;
+            }
+
+            App.drawScene();
+        });
+
         DOM.canvas.addEventListener('mouseleave', () => {
             State.isDragging = false;
             DOM.canvas.classList.remove('cursor-grabbing');
@@ -381,6 +459,7 @@
             State.offsetX = mouseX - mouseCartesianX * newScale - State.centerX;
             State.offsetY = mouseY - (State.centerY - mouseCartesianY * newScale);
             State.scale = newScale;
+            State.selectedPointInfo = null;
             App.drawScene();
         });
 
@@ -392,6 +471,11 @@
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape') {
                 return;
+            }
+
+            if (State.selectedPointInfo) {
+                State.selectedPointInfo = null;
+                App.drawScene();
             }
 
             if (DOM.pointTraceModal && !DOM.pointTraceModal.classList.contains('hidden')) {

@@ -310,6 +310,9 @@
         dataset.loading = false;
         dataset.plotPoints = [];
         updateLoadButton();
+        if (typeof App.resetLabTraining === 'function') {
+            App.resetLabTraining();
+        }
 
         if (wasLoaded && App.drawScene) {
             App.drawScene();
@@ -462,6 +465,46 @@
         setSelectOptions(DOM.yFeatureSelect, features, yFeature);
         State.dataset.xFeature = xFeature;
         State.dataset.yFeature = yFeature;
+        updateTargetSelects();
+    };
+
+    const updateTargetSelects = function () {
+        const headers = State.dataset.headers;
+        const dataset = State.dataset;
+        const populate = (select, currentValue, sameLabel) => {
+            if (!select) {
+                return '';
+            }
+
+            select.innerHTML = '';
+            const same = document.createElement('option');
+            same.value = '';
+            same.textContent = sameLabel;
+            select.appendChild(same);
+            const zero = document.createElement('option');
+            zero.value = '__zero__';
+            zero.textContent = 'Zero column';
+            select.appendChild(zero);
+
+            headers.forEach(header => {
+                const option = document.createElement('option');
+                option.value = header;
+                option.textContent = header;
+                select.appendChild(option);
+            });
+
+            const value = currentValue === '__zero__' || headers.includes(currentValue) ? currentValue : '';
+            select.value = value;
+            return value;
+        };
+
+        const targetX = populate(DOM.targetXFeatureSelect, dataset.targetXFeature, `Same as ${dataset.xFeature || 'X input'}`);
+        const targetY = populate(DOM.targetYFeatureSelect, dataset.targetYFeature, `Same as ${dataset.yFeature || 'Y input'}`);
+        dataset.targetXFeature = targetX;
+        dataset.targetYFeature = targetY;
+        if (DOM.regressionTargetFields) {
+            DOM.regressionTargetFields.classList.toggle('hidden', dataset.problemType !== 'regression');
+        }
     };
 
     const updateOutputSelect = function () {
@@ -539,6 +582,21 @@
             return false;
         }
 
+        if (dataset.problemType === 'regression') {
+            const targetChecks = [
+                { value: dataset.targetXFeature, label: 'Target X' },
+                { value: dataset.targetYFeature, label: 'Target Y' }
+            ];
+            for (const target of targetChecks) {
+                if (target.value && target.value !== '__zero__' && !isNumericColumn(target.value, activeRows)) {
+                    dataset.ready = false;
+                    updateLoadButton();
+                    setError(`${target.label} "${target.value}" must contain only numbers.`);
+                    return false;
+                }
+            }
+        }
+
         clearError();
         dataset.ready = true;
         updateLoadButton();
@@ -563,6 +621,12 @@
         }
         if (DOM.yFeatureSelect) {
             State.dataset.yFeature = DOM.yFeatureSelect.value;
+        }
+        if (DOM.targetXFeatureSelect) {
+            State.dataset.targetXFeature = DOM.targetXFeatureSelect.value;
+        }
+        if (DOM.targetYFeatureSelect) {
+            State.dataset.targetYFeature = DOM.targetYFeatureSelect.value;
         }
 
         if (State.dataset.xFeature === State.dataset.yFeature) {
@@ -652,6 +716,8 @@
         State.dataset.outputColumn = headers.length >= 3 ? headers[headers.length - 1] : '';
         State.dataset.xFeature = '';
         State.dataset.yFeature = '';
+        State.dataset.targetXFeature = '';
+        State.dataset.targetYFeature = '';
         State.dataset.outputClasses = [];
         State.dataset.selectedClasses = [];
         State.dataset.labelMapping = [];
@@ -710,6 +776,8 @@
         dataset.outputColumn = '';
         dataset.xFeature = '';
         dataset.yFeature = '';
+        dataset.targetXFeature = '';
+        dataset.targetYFeature = '';
         dataset.outputClasses = [];
         dataset.selectedClasses = [];
         dataset.labelMapping = [];
@@ -805,7 +873,12 @@
             App.showToast('Loading complete', 'success');
 
             setTimeout(() => {
-                if (dataset.loaded && DOM.settingsModal && !DOM.settingsModal.classList.contains('hidden')) {
+                if (!dataset.loaded) {
+                    return;
+                }
+                if (typeof App.onLabDatasetLoaded === 'function') {
+                    App.onLabDatasetLoaded();
+                } else if (DOM.settingsModal && !DOM.settingsModal.classList.contains('hidden')) {
                     App.closeSettingsModal();
                 }
             }, Config.DATA_LOADING_CLOSE_DELAY);
@@ -874,6 +947,7 @@
             }
 
             updateClassSelectionUi();
+            updateTargetSelects();
             syncSelectionsFromUi();
         };
 
@@ -946,6 +1020,16 @@
                     App.drawScene();
                 }
             });
+        });
+
+        [DOM.targetXFeatureSelect, DOM.targetYFeatureSelect].forEach(select => {
+            if (select) {
+                select.addEventListener('change', () => {
+                    State.dataset.targetXFeature = DOM.targetXFeatureSelect ? DOM.targetXFeatureSelect.value : '';
+                    State.dataset.targetYFeature = DOM.targetYFeatureSelect ? DOM.targetYFeatureSelect.value : '';
+                    syncSelectionsFromUi();
+                });
+            }
         });
 
         if (DOM.loadPointsBtn) {

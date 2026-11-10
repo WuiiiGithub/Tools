@@ -99,6 +99,29 @@
         return `<span class="font-semibold text-gray-700">Vector ${label}</span>${coordinatesLine}`;
     };
 
+    App.buildPointInfoMarkup = function (item) {
+        const formatCoordinate = value => {
+            if (!Number.isFinite(value)) {
+                return '—';
+            }
+            if (Math.abs(value) >= 1e6 || (Math.abs(value) > 0 && Math.abs(value) < 1e-4)) {
+                return value.toExponential(3);
+            }
+            return String(Number(value.toFixed(4)));
+        };
+        const transformed = App.transformPointThroughCascade(item.point);
+        const classLine = item.label
+            ? `<span class="text-xs font-medium text-slate-500">Class: ${item.label}</span>`
+            : '';
+
+        return [
+            '<span class="font-semibold text-gray-700">Dataset point</span>',
+            classLine,
+            `<span class="font-bold text-blue-600">Blue (X, Y) = (${formatCoordinate(item.point[0])}, ${formatCoordinate(item.point[1])})</span>`,
+            `<span class="font-bold text-red-600">Red (X1, X2) = (${formatCoordinate(transformed[0])}, ${formatCoordinate(transformed[1])})</span>`
+        ].filter(Boolean).join('');
+    };
+
     App.applyPerspectiveButtonStyle = function () {
         if (State.perspectiveMode === 'transformed') {
             DOM.perspectiveToggleBtn.classList.remove(...Config.PERSPECTIVE_BLUE_CLASSES);

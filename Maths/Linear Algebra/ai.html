@@ -7,10 +7,13 @@
     <title>VisuoMatrix AI</title>
     <link rel="icon" href="https://avatars.githubusercontent.com/u/142606875?v=4&size=16" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
     <link rel="stylesheet" href="css/base.css">
     <script defer src="js/core/config.js"></script>
     <script defer src="js/core/math.js"></script>
     <script defer src="js/core/activation.js"></script>
+    <script defer src="js/core/space-morph.js"></script>
     <script defer src="js/app/dom.js"></script>
     <script defer src="js/app/state.js"></script>
     <script defer src="js/app/matrices.js"></script>
@@ -19,6 +22,7 @@
     <script defer src="js/app/render.js"></script>
     <script defer src="js/app/cascade.js"></script>
     <script defer src="js/app/data.js"></script>
+    <script defer src="js/app/lab.js"></script>
     <script defer src="js/app/interactions.js"></script>
     <script defer src="js/app/tracer.js"></script>
     <script defer src="js/app/main.js"></script>
@@ -33,26 +37,33 @@
         </div>
 
         <!-- Point trace playback HUD -->
-        <div id="pointTraceHud" class="pointer-events-none fixed left-1/2 top-4 z-[70] hidden w-[min(92vw,32rem)] -translate-x-1/2">
-            <div class="pointer-events-auto rounded-2xl border border-indigo-200 bg-white/95 p-3.5 shadow-[0_20px_60px_-20px_rgba(49,46,129,0.4)] backdrop-blur">
-                <div class="flex items-start gap-3">
-                    <div class="min-w-0 flex-1">
-                        <div class="mb-1.5 flex items-center justify-between gap-3">
-                            <span id="pointTraceHudStep" class="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Step 0 of 0</span>
-                            <span id="pointTraceHudTime" class="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-indigo-700">5.0s</span>
-                        </div>
-                        <p id="pointTraceHudTitle" class="truncate text-sm font-bold tracking-tight text-slate-900">Blue input</p>
-                        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                            <div id="pointTraceHudProgress" class="h-full w-0 rounded-full bg-gradient-to-r from-blue-500 via-amber-400 to-red-500"></div>
-                        </div>
-                    </div>
-                    <div class="flex shrink-0 items-center gap-1.5">
-                        <button id="pointTraceHudPauseBtn" type="button" class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100">Pause</button>
-                        <button id="pointTraceHudStopBtn" type="button" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50">Stop</button>
+        <div id="pointTraceHud" class="pointer-events-none fixed left-1/2 top-4 z-[70] hidden w-[min(92vw,26rem)] -translate-x-1/2">
+            <div class="pointer-events-auto overflow-hidden rounded-2xl border border-indigo-200 bg-white/95 shadow-[0_20px_60px_-20px_rgba(49,46,129,0.4)] backdrop-blur">
+                <button id="pointTraceHudCard" type="button" class="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-indigo-50/40 active:bg-indigo-50/70">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M1 2.5A.5.5 0 0 1 1.5 2h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 2.5m0 5A.5.5 0 0 1 1.5 7h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 7.5m0 5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13a.5.5 0 0 1-.5-.5"/>
+                        </svg>
+                    </span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-500">Point trace</span>
+                        <span id="pointTraceHudTitle" class="mt-0.5 block truncate text-sm font-bold tracking-tight text-slate-900">Blue input</span>
+                    </span>
+                    <span class="flex shrink-0 items-center gap-1 text-xs font-semibold text-indigo-600">
+                        View math
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708"/>
+                        </svg>
+                    </span>
+                </button>
+                <div class="flex items-center gap-3 border-t border-indigo-100 bg-white/80 px-4 py-2">
+                    <button id="pointTraceHudPauseBtn" type="button" class="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100">Pause</button>
+                    <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div id="pointTraceHudProgress" class="h-full w-0 rounded-full bg-gradient-to-r from-blue-500 via-amber-400 to-red-500 transition-[width] duration-100"></div>
                     </div>
                 </div>
-                <p class="mt-2 text-[10px] font-medium text-slate-400">Press Space to pause or resume. The graph stays visible while tracing.</p>
             </div>
+            <p class="mt-2 text-center text-[10px] font-medium text-slate-400">Click for worked calculations · Space pauses</p>
         </div>
 
         <!-- Floating brand -->
@@ -104,7 +115,7 @@
                     <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4">
                         <div>
                             <h3 id="settingsTitle" class="text-base font-bold tracking-tight text-slate-900">Settings</h3>
-                            <p class="mt-0.5 text-xs text-slate-500">Adjust the view, grid, labels, and imported dataset.</p>
+                            <p class="mt-0.5 text-xs text-slate-500">Adjust the view, grid, labels, datasets, and training lab.</p>
                         </div>
                         <button id="closeSettingsBtn" type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700" aria-label="Close settings">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
@@ -145,12 +156,12 @@
                                     </span>
                                 </button>
                                 <button type="button" role="tab" id="settingsTabData" aria-controls="settingsPaneData" aria-selected="false" tabindex="-1" data-settings-tab="data" class="settings-tab flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900">
-                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1c-2.21 0-4 .895-4 2s1.79 2 4 2 4-.895 4-2-1.79-2-4-2zM4 4.5V6c0 1.105 1.79 2 4 2s4-.895 4-2V4.5c-.9.6-2.35 1-4 1s-3.1-.4-4-1zM4 8.5V10c0 1.105 1.79 2 4 2s4-.895 4-2V8.5c-.9.6-2.35 1-4 1s-3.1-.4-4-1zM4 12.5V14c0 1.105 1.79 2 4 2s4-.895 4-2v-1.5c-.9.6-2.35 1-4 1s-3.1-.4-4-1z"/></svg>
+                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-100 to-orange-100 text-amber-700">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 1a.5.5 0 0 1 .5.5V2h4v-.5a.5.5 0 0 1 1 0V2h.5a1.5 1.5 0 0 1 1.5 1.5v1.382a2.5 2.5 0 0 1-.221 1.014L11.5 9.086V13.5A1.5 1.5 0 0 1 10 15H6a1.5 1.5 0 0 1-1.5-1.5V9.086L3.221 5.896A2.5 2.5 0 0 1 3 4.882V3.5A1.5 1.5 0 0 1 4.5 2H5v-.5a.5.5 0 0 1 .5-.5Zm-1.5 2a.5.5 0 0 0-.5.5v1.382c0 .21.044.417.129.61L5 9.257V13.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5V9.257l1.371-3.765a1.5 1.5 0 0 0 .129-.61V3.5a.5.5 0 0 0-.5-.5h-7Z"/><path d="M6.5 5.5A.5.5 0 0 1 7 5h2a.5.5 0 0 1 0 1H7a.5.5 0 0 1-.5-.5ZM7 7.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5Z"/></svg>
                                     </span>
                                     <span class="min-w-0">
-                                        <span class="block text-sm font-semibold">Data</span>
-                                        <span class="block truncate text-[10px] text-slate-400">CSV and point classes</span>
+                                        <span class="block text-sm font-semibold">Labs</span>
+                                        <span class="block truncate text-[10px] text-slate-400">Data, train, report</span>
                                     </span>
                                 </button>
                             </nav>
@@ -297,148 +308,331 @@
                                 </div>
                             </section>
 
-                            <section id="settingsPaneData" data-settings-pane="data" role="tabpanel" aria-labelledby="settingsTabData" class="hidden space-y-4">
-                                <div>
-                                    <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">Dataset</p>
-                                    <h4 class="mt-1 text-lg font-bold tracking-tight text-slate-900">Points and classes</h4>
-                                    <p class="mt-1 text-xs leading-relaxed text-slate-500">Import CSV data, choose the two numeric inputs, and optionally use a class column to color the points.</p>
+                            <section id="settingsPaneData" data-settings-pane="data" role="tabpanel" aria-labelledby="settingsTabData" class="hidden">
+                                <div class="mb-4 flex items-start justify-between gap-4">
+                                    <div>
+                                        <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">Labs</p>
+                                        <h4 class="mt-1 text-lg font-bold tracking-tight text-slate-900">Data to model workflow</h4>
+                                        <p class="mt-1 text-xs leading-relaxed text-slate-500">Keep datasets in your browser, prepare inputs and colors, then train the red space epoch by epoch.</p>
+                                    </div>
+                                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 text-amber-700 ring-1 ring-amber-200">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                            <path d="M5.5 1a.5.5 0 0 1 .5.5V2h4v-.5a.5.5 0 0 1 1 0V2h.5a1.5 1.5 0 0 1 1.5 1.5v1.382a2.5 2.5 0 0 1-.221 1.014L11.5 9.086V13.5A1.5 1.5 0 0 1 10 15H6a1.5 1.5 0 0 1-1.5-1.5V9.086L3.221 5.896A2.5 2.5 0 0 1 3 4.882V3.5A1.5 1.5 0 0 1 4.5 2H5v-.5a.5.5 0 0 1 .5-.5Zm-1.5 2a.5.5 0 0 0-.5.5v1.382c0 .21.044.417.129.61L5 9.257V13.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5V9.257l1.371-3.765a1.5 1.5 0 0 0 .129-.61V3.5a.5.5 0 0 0-.5-.5h-7Z"/>
+                                            <path d="M6.5 5.5A.5.5 0 0 1 7 5h2a.5.5 0 0 1 0 1H7a.5.5 0 0 1-.5-.5ZM7 7.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5Z"/>
+                                        </svg>
+                                    </span>
                                 </div>
 
-                                <div class="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
-                                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-                                        <div>
-                                            <p class="text-[11px] font-bold uppercase tracking-wider text-amber-800">CSV import</p>
-                                            <p class="mt-1 text-[11px] text-amber-700">At least two columns are required; no empty cells.</p>
-                                        </div>
-                                        <button id="clearDataBtn" type="button" disabled class="cursor-not-allowed rounded-xl border border-amber-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-amber-700 opacity-50 transition-colors hover:bg-white hover:text-amber-900 disabled:hover:bg-white/80">Clear data</button>
-                                    </div>
-
-                                    <label id="csvDropZone" for="csvFileInput" class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-amber-300 bg-white/70 px-4 py-5 text-center transition-colors hover:border-amber-400 hover:bg-white">
-                                        <span class="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-                                                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                                                <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
-                                            </svg>
-                                        </span>
-                                        <span class="text-sm font-semibold text-slate-700">Choose a CSV file</span>
-                                        <span class="text-[11px] text-slate-500">or drag and drop it here</span>
-                                    </label>
-                                    <input id="csvFileInput" type="file" accept=".csv,text/csv" class="hidden">
-                                    <div class="mt-3 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-xs">
-                                        <span id="csvFileName" class="max-w-[70%] truncate font-medium text-slate-600">No file selected</span>
-                                        <span id="csvSummary" class="shrink-0 font-mono text-amber-700">—</span>
-                                    </div>
-                                    <div id="csvError" class="mt-2 hidden rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"></div>
-                                    <div id="csvStatus" aria-live="polite" class="mt-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-500">Import a dataset to choose inputs and optional point classes.</div>
-                                </div>
-
-                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                    <fieldset>
-                                        <legend class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">Problem type</legend>
-                                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                            <label class="flex cursor-pointer flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50">
-                                                <span class="flex items-center gap-2 font-semibold text-slate-700">
-                                                    <input type="radio" id="problemTypeClassification" name="problemType" value="classification" class="h-4 w-4 accent-emerald-600" disabled>
-                                                    Classification
-                                                </span>
-                                                <span class="text-[10px] leading-snug text-slate-500">Use a class column to color points. The cascade stays fully editable.</span>
-                                            </label>
-                                            <label class="flex cursor-pointer flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors hover:border-blue-300 hover:bg-blue-50">
-                                                <span class="flex items-center gap-2 font-semibold text-slate-700">
-                                                    <input type="radio" id="problemTypeRegression" name="problemType" value="regression" class="h-4 w-4 accent-blue-600" disabled>
-                                                    Regression
-                                                </span>
-                                                <span class="text-[10px] leading-snug text-slate-500">Use the two numeric inputs directly; any extra column is ignored.</span>
-                                            </label>
-                                        </div>
-                                    </fieldset>
-
-                                    <div class="mt-4 border-t border-slate-200 pt-4">
-                                        <div class="mb-3 flex items-start justify-between gap-2">
-                                            <div>
-                                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Input mapping</p>
-                                                <p class="mt-1 text-[11px] leading-snug text-slate-500">Every point uses exactly two numeric features.</p>
-                                            </div>
-                                            <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ring-1 ring-slate-200">X / Y</span>
-                                        </div>
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <label for="xFeatureSelect" class="block">
-                                                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">X feature</span>
-                                                <select id="xFeatureSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
-                                                    <option value="">Import a CSV first</option>
-                                                </select>
-                                            </label>
-                                            <label for="yFeatureSelect" class="block">
-                                                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Y feature</span>
-                                                <select id="yFeatureSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
-                                                    <option value="">Import a CSV first</option>
-                                                </select>
-                                            </label>
-                                        </div>
-
-                                        <div id="outputColumnField" class="mt-3 hidden">
-                                            <label for="outputColumnSelect" class="block">
-                                                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Class column</span>
-                                                <select id="outputColumnSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15" disabled>
-                                                    <option value="">Choose a class column</option>
-                                                </select>
-                                            </label>
-                                            <p class="mt-1 text-[10px] leading-snug text-slate-400">Used only to assign point colors; it is never treated as an input feature.</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div id="classSelection" class="hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                                    <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Select 2 classes</p>
-                                    <p id="classSelectionHint" class="mt-1 text-[11px] leading-snug text-emerald-700"></p>
-                                    <div class="mt-3 grid grid-cols-2 gap-2">
-                                        <label for="classASelect" class="block">
-                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Class 1</span>
-                                            <select id="classASelect" class="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15">
-                                                <option value="">Select class</option>
-                                            </select>
-                                        </label>
-                                        <label for="classBSelect" class="block">
-                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Class 2</span>
-                                            <select id="classBSelect" class="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15">
-                                                <option value="">Select class</option>
-                                            </select>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div id="encodingSummary" class="hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-[11px] font-medium text-emerald-800"></div>
-
-                                <div id="classColorRow" class="hidden rounded-2xl border border-emerald-200 bg-white/80 p-4">
-                                    <div class="mb-3 flex items-center justify-between gap-2">
-                                        <div>
-                                            <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Point colors</p>
-                                            <p class="mt-1 text-[10px] leading-snug text-slate-500">Defaults are green and orange; choose any two colors.</p>
-                                        </div>
-                                        <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Custom</span>
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <label for="classAColor" class="flex items-center justify-between gap-2 rounded-xl border border-emerald-100 bg-emerald-50/60 px-2.5 py-2">
-                                            <span id="classAColorLabel" class="truncate text-xs font-semibold text-emerald-900">Class 1</span>
-                                            <input type="color" id="classAColor" value="#10b981" class="h-7 w-9 cursor-pointer rounded-md border border-emerald-200 bg-white p-0.5">
-                                        </label>
-                                        <label for="classBColor" class="flex items-center justify-between gap-2 rounded-xl border border-orange-100 bg-orange-50/60 px-2.5 py-2">
-                                            <span id="classBColorLabel" class="truncate text-xs font-semibold text-orange-900">Class 2</span>
-                                            <input type="color" id="classBColor" value="#f97316" class="h-7 w-9 cursor-pointer rounded-md border border-orange-200 bg-white p-0.5">
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                                    <div class="flex items-center justify-between gap-3">
-                                        <div class="min-w-0">
-                                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Visualization</p>
-                                            <p id="dataLoadHint" class="mt-1 text-[11px] leading-snug text-slate-500">Complete preprocessing to load points.</p>
-                                        </div>
-                                        <button id="loadPointsBtn" type="button" disabled class="flex shrink-0 cursor-not-allowed items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white opacity-50 shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0 disabled:hover:translate-y-0">
-                                            <span id="loadPointsSpinner" class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
-                                            <span id="loadPointsLabel">Load points</span>
+                                <div class="grid gap-4 lg:grid-cols-[11.5rem_minmax(0,1fr)]">
+                                    <nav id="labStepNav" class="flex flex-col gap-1.5 rounded-2xl border border-slate-200 bg-slate-50/80 p-2" aria-label="Lab steps">
+                                        <button type="button" data-lab-step="datahub" class="lab-step-btn flex items-center gap-2.5 rounded-xl bg-slate-900 px-3 py-2.5 text-left text-white shadow-sm transition-colors">
+                                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[10px] font-black">01</span>
+                                            <span class="min-w-0">
+                                                <span class="block text-sm font-semibold">DataHub</span>
+                                                <span class="block truncate text-[10px] opacity-60">Stored datasets</span>
+                                            </span>
                                         </button>
+                                        <button type="button" data-lab-step="preprocessing" class="lab-step-btn flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-slate-600 transition-colors hover:bg-white">
+                                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-[10px] font-black text-amber-700">02</span>
+                                            <span class="min-w-0">
+                                                <span class="block text-sm font-semibold">Preprocessing</span>
+                                                <span class="block truncate text-[10px] text-slate-400">Inputs and classes</span>
+                                            </span>
+                                        </button>
+                                        <button type="button" data-lab-step="modeling" class="lab-step-btn flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-slate-600 transition-colors hover:bg-white">
+                                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-[10px] font-black text-indigo-700">03</span>
+                                            <span class="min-w-0">
+                                                <span class="block text-sm font-semibold">Modeling</span>
+                                                <span class="block truncate text-[10px] text-slate-400">Train and report</span>
+                                            </span>
+                                        </button>
+                                        <div class="mt-auto rounded-xl border border-slate-200 bg-white/80 p-2.5 text-[10px] leading-relaxed text-slate-500">
+                                            <span class="mb-1 flex items-center gap-1.5 font-semibold text-slate-700">
+                                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                                Auto-saved
+                                            </span>
+                                            Edits apply instantly. Training uses the same 2D cascade shown on the canvas.
+                                        </div>
+                                    </nav>
+
+                                    <div class="min-w-0">
+                                        <div data-lab-pane="datahub" class="space-y-4">
+                                            <div class="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+                                                <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                                    <div>
+                                                        <p class="text-[11px] font-bold uppercase tracking-wider text-amber-800">Dataset library</p>
+                                                        <p class="mt-1 text-[11px] text-amber-700">Upload a CSV, name it, and reuse it from local storage.</p>
+                                                    </div>
+                                                    <span id="labDataHubCount" class="rounded-full border border-amber-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-700">0 datasets</span>
+                                                </div>
+                                                <label for="labDatasetSearch" class="flex items-center gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2 shadow-sm focus-within:border-amber-400 focus-within:ring-4 focus-within:ring-amber-400/10">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" class="shrink-0 text-amber-500" aria-hidden="true"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>
+                                                    <input id="labDatasetSearch" type="search" placeholder="Search saved datasets…" class="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400">
+                                                </label>
+                                            </div>
+
+                                            <div class="relative rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                <div id="labDatasetList" class="max-h-64 space-y-2 overflow-y-auto pr-1"></div>
+                                                <div id="labDatasetEmpty" class="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-7 text-center text-xs text-slate-500">
+                                                    No saved datasets yet. Upload a CSV to start the lab.
+                                                </div>
+                                                <button id="labUploadDataBtn" type="button" class="absolute -bottom-3 -right-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/30 ring-4 ring-white transition-all hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0" title="Upload dataset" aria-label="Upload dataset">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a.5.5 0 0 1 .5.5v9.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 11.293V1.5A.5.5 0 0 1 8 1Z"/><path d="M2 13.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5Z"/></svg>
+                                                </button>
+                                                <input id="labDatasetFileInput" type="file" accept=".csv,text/csv" class="hidden">
+                                            </div>
+
+                                            <div id="labDatasetPreview" class="hidden rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4"></div>
+                                            <div id="labDataHubStatus" aria-live="polite" class="rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-500">Datasets stay in this browser unless you clear them.</div>
+                                        </div>
+
+                                        <div data-lab-pane="preprocessing" class="hidden space-y-4">
+                                            <div class="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+                                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                                    <div class="min-w-0">
+                                                        <p class="text-[11px] font-bold uppercase tracking-wider text-amber-800">Active dataset</p>
+                                                        <p id="labActiveDatasetName" class="mt-1 truncate text-sm font-semibold text-slate-800">No dataset selected</p>
+                                                        <p id="csvFileName" class="mt-0.5 truncate text-[11px] text-slate-500">No file selected</p>
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        <span id="csvSummary" class="rounded-full border border-amber-200 bg-white/80 px-2.5 py-1 font-mono text-[11px] text-amber-700">—</span>
+                                                        <button id="clearDataBtn" type="button" disabled class="cursor-not-allowed rounded-xl border border-amber-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-amber-700 opacity-50 transition-colors hover:bg-white hover:text-amber-900 disabled:hover:bg-white/80">Clear</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                                <fieldset>
+                                                    <legend class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">Problem type</legend>
+                                                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                        <label class="flex cursor-pointer flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50">
+                                                            <span class="flex items-center gap-2 font-semibold text-slate-700">
+                                                                <input type="radio" id="problemTypeClassification" name="problemType" value="classification" class="h-4 w-4 accent-emerald-600" disabled>
+                                                                Classification
+                                                            </span>
+                                                            <span class="text-[10px] leading-snug text-slate-500">Classes become colors, and the output is a binary probability map.</span>
+                                                        </label>
+                                                        <label class="flex cursor-pointer flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors hover:border-blue-300 hover:bg-blue-50">
+                                                            <span class="flex items-center gap-2 font-semibold text-slate-700">
+                                                                <input type="radio" id="problemTypeRegression" name="problemType" value="regression" class="h-4 w-4 accent-blue-600" disabled>
+                                                                Regression
+                                                            </span>
+                                                            <span class="text-[10px] leading-snug text-slate-500">Two continuous inputs evolve into two continuous outputs.</span>
+                                                        </label>
+                                                    </div>
+                                                </fieldset>
+
+                                                <div class="mt-4 border-t border-slate-200 pt-4">
+                                                    <div class="mb-3 flex items-start justify-between gap-2">
+                                                        <div>
+                                                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Input mapping</p>
+                                                            <p class="mt-1 text-[11px] leading-snug text-slate-500">Every point uses exactly two numeric features.</p>
+                                                        </div>
+                                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ring-1 ring-slate-200">X / Y</span>
+                                                    </div>
+                                                    <div class="grid grid-cols-2 gap-2">
+                                                        <label for="xFeatureSelect" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">X feature</span>
+                                                            <select id="xFeatureSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
+                                                                <option value="">Import a CSV first</option>
+                                                            </select>
+                                                        </label>
+                                                        <label for="yFeatureSelect" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Y feature</span>
+                                                            <select id="yFeatureSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-400/15" disabled>
+                                                                <option value="">Import a CSV first</option>
+                                                            </select>
+                                                        </label>
+                                                    </div>
+
+                                                    <div id="outputColumnField" class="mt-3 hidden">
+                                                        <label for="outputColumnSelect" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Class column</span>
+                                                            <select id="outputColumnSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15" disabled>
+                                                                <option value="">Choose a class column</option>
+                                                            </select>
+                                                        </label>
+                                                        <p class="mt-1 text-[10px] leading-snug text-slate-400">Used only to assign point colors; it is never treated as an input feature.</p>
+                                                    </div>
+
+                                                    <div id="regressionTargetFields" class="mt-3 hidden rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                                                        <p class="text-[10px] font-bold uppercase tracking-wider text-blue-800">Regression targets</p>
+                                                        <p class="mt-0.5 text-[10px] leading-snug text-blue-700">Optional. Leave as input for an identity target, or choose two output columns.</p>
+                                                        <div class="mt-2 grid grid-cols-2 gap-2">
+                                                            <label for="targetXFeatureSelect" class="block">
+                                                                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-blue-700">Target X</span>
+                                                                <select id="targetXFeatureSelect" class="w-full rounded-xl border border-blue-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-400/15"></select>
+                                                            </label>
+                                                            <label for="targetYFeatureSelect" class="block">
+                                                                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-blue-700">Target Y</span>
+                                                                <select id="targetYFeatureSelect" class="w-full rounded-xl border border-blue-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-400/15"></select>
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div id="classSelection" class="hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                                                <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Select 2 classes</p>
+                                                <p id="classSelectionHint" class="mt-1 text-[11px] leading-snug text-emerald-700"></p>
+                                                <div class="mt-3 grid grid-cols-2 gap-2">
+                                                    <label for="classASelect" class="block">
+                                                        <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Class 1</span>
+                                                        <select id="classASelect" class="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15">
+                                                            <option value="">Select class</option>
+                                                        </select>
+                                                    </label>
+                                                    <label for="classBSelect" class="block">
+                                                        <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Class 2</span>
+                                                        <select id="classBSelect" class="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-400/15">
+                                                            <option value="">Select class</option>
+                                                        </select>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div id="encodingSummary" class="hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-[11px] font-medium text-emerald-800"></div>
+
+                                            <div id="classColorRow" class="hidden rounded-2xl border border-emerald-200 bg-white/80 p-4">
+                                                <div class="mb-3 flex items-center justify-between gap-2">
+                                                    <div>
+                                                        <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Class colors</p>
+                                                        <p class="mt-1 text-[10px] leading-snug text-slate-500">Classes are identified by color everywhere: data, points, predictions, and the report.</p>
+                                                    </div>
+                                                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Custom</span>
+                                                </div>
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <label for="classAColor" class="flex items-center justify-between gap-2 rounded-xl border border-emerald-100 bg-emerald-50/60 px-2.5 py-2">
+                                                        <span id="classAColorLabel" class="truncate text-xs font-semibold text-emerald-900">Class 1</span>
+                                                        <input type="color" id="classAColor" value="#10b981" class="h-7 w-9 cursor-pointer rounded-md border border-emerald-200 bg-white p-0.5">
+                                                    </label>
+                                                    <label for="classBColor" class="flex cursor-pointer items-center justify-between gap-2 rounded-xl border border-orange-100 bg-orange-50/60 px-2.5 py-2">
+                                                        <span id="classBColorLabel" class="truncate text-xs font-semibold text-orange-900">Class 2</span>
+                                                        <input type="color" id="classBColor" value="#f97316" class="h-7 w-9 cursor-pointer rounded-md border border-orange-200 bg-white p-0.5">
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div id="csvError" class="hidden rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"></div>
+                                            <div id="csvStatus" aria-live="polite" class="rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-500">Choose a saved dataset from DataHub.</div>
+
+                                            <div class="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <div class="min-w-0">
+                                                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Prepared data</p>
+                                                        <p id="dataLoadHint" class="mt-1 text-[11px] leading-snug text-slate-500">Complete preprocessing to load points.</p>
+                                                    </div>
+                                                    <button id="loadPointsBtn" type="button" disabled class="flex shrink-0 cursor-not-allowed items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white opacity-50 shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0 disabled:hover:translate-y-0">
+                                                        <span id="loadPointsSpinner" class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+                                                        <span id="loadPointsLabel">Continue to modeling</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div class="hidden">
+                                                <label id="csvDropZone" for="csvFileInput"></label>
+                                                <input id="csvFileInput" type="file" accept=".csv,text/csv">
+                                            </div>
+                                        </div>
+
+                                        <div data-lab-pane="modeling" class="hidden space-y-4">
+                                            <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50/70 p-4">
+                                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                                    <div class="min-w-0">
+                                                        <p class="text-[11px] font-bold uppercase tracking-wider text-indigo-700">Modeling</p>
+                                                        <h5 class="mt-1 text-base font-bold tracking-tight text-slate-900">Train the red space</h5>
+                                                        <p id="labModelStatus" class="mt-1 text-[11px] leading-relaxed text-slate-600">Load prepared points, then press play to train epoch by epoch.</p>
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        <button id="labResetBtn" type="button" class="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-200 bg-white text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50" title="Reset training" aria-label="Reset training">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+                                                        </button>
+                                                        <button id="labPlayBtn" type="button" class="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all hover:-translate-y-0.5 hover:bg-indigo-700 active:translate-y-0" title="Play training">
+                                                            <svg id="labPlayIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>
+                                                            <svg id="labPauseIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" class="hidden"><path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/></svg>
+                                                            <span id="labPlayLabel">Play</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="mt-4">
+                                                    <div class="flex items-center justify-between text-[11px] font-medium text-slate-500">
+                                                        <span id="labEpochLabel">Epoch 0 / 50</span>
+                                                        <span id="labTrainingPercent">0%</span>
+                                                    </div>
+                                                    <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-white shadow-inner">
+                                                        <div id="labTrainingProgress" class="h-full w-0 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-amber-400 transition-[width] duration-150"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="grid gap-4 xl:grid-cols-2">
+                                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                                    <p class="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Optimization</p>
+                                                    <div class="space-y-2.5">
+                                                        <label for="labLossSelect" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Loss function</span>
+                                                            <select id="labLossSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-4 focus:ring-indigo-400/15">
+                                                                <option value="mse">Mean squared error</option>
+                                                                <option value="mae">Mean absolute error</option>
+                                                                <option value="huber">Huber loss</option>
+                                                                <option value="crossEntropy">Binary cross-entropy</option>
+                                                            </select>
+                                                        </label>
+                                                        <label for="labOptimizerSelect" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Optimizer</span>
+                                                            <select id="labOptimizerSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-4 focus:ring-indigo-400/15">
+                                                                <option value="adam">Adam</option>
+                                                                <option value="sgd">SGD</option>
+                                                                <option value="momentum">Momentum</option>
+                                                                <option value="rmsprop">RMSProp</option>
+                                                            </select>
+                                                        </label>
+                                                        <label for="labBatchModeSelect" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Gradient mode</span>
+                                                            <select id="labBatchModeSelect" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-4 focus:ring-indigo-400/15">
+                                                                <option value="batch">Batch gradient descent</option>
+                                                                <option value="mini">Mini-batch gradient descent</option>
+                                                                <option value="stochastic">Stochastic gradient descent</option>
+                                                            </select>
+                                                        </label>
+                                                        <label for="labLearningRate" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Learning rate</span>
+                                                            <input id="labLearningRate" type="number" min="0.00001" max="1" step="0.001" value="0.03" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-4 focus:ring-indigo-400/15">
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                                    <p class="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Training run</p>
+                                                    <div class="space-y-2.5">
+                                                        <label for="labValidationSplit" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Validation split</span>
+                                                            <input id="labValidationSplit" type="number" min="0" max="0.9" step="0.05" value="0.2" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-4 focus:ring-indigo-400/15">
+                                                        </label>
+                                                        <label for="labEpochs" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Epochs</span>
+                                                            <input id="labEpochs" type="number" min="1" max="1000" step="1" value="50" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-4 focus:ring-indigo-400/15">
+                                                        </label>
+                                                        <div class="rounded-xl border border-indigo-100 bg-white/80 px-3 py-2">
+                                                            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Architecture</p>
+                                                            <p class="mt-1 font-mono text-[11px] font-semibold text-indigo-700">2 inputs → 2 tanh → 2 outputs</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="grid gap-2 sm:grid-cols-2">
+                                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Training loss</p>
+                                                    <p id="labTrainLoss" class="mt-1 font-mono text-lg font-bold text-slate-800">—</p>
+                                                </div>
+                                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Validation loss</p>
+                                                    <p id="labValLoss" class="mt-1 font-mono text-lg font-bold text-slate-800">—</p>
+                                                </div>
+                                            </div>
+                                            <p id="labModelHint" class="rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-[11px] leading-relaxed text-slate-500">Regression can predict selected target columns; classification learns two class probabilities and colors them to match your palette.</p>
+                                        </div>
                                     </div>
                                 </div>
                             </section>
@@ -448,6 +642,86 @@
                     <footer class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
                         <span class="text-xs text-slate-500">Canvas and dataset settings are saved instantly.</span>
                         <button id="doneSettingsBtn" type="button" class="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0">Done</button>
+                    </footer>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lab result actions -->
+        <div id="labResultActions" class="fixed bottom-20 right-4 z-[75] hidden flex flex-col gap-2">
+            <button id="labPredictionToggleBtn" type="button" aria-pressed="false" title="Show predicted points" class="group flex h-11 w-11 items-center justify-center rounded-2xl border border-white/50 bg-white/95 text-slate-500 shadow-lg ring-1 ring-slate-200/80 backdrop-blur transition-all hover:-translate-y-0.5 hover:text-indigo-600 hover:shadow-xl active:translate-y-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M8 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm-4.5 1a.5.5 0 0 0 0 1h1.05a3.5 3.5 0 0 0 6.9 0h1.05a.5.5 0 0 0 0-1H11.45a3.5 3.5 0 0 0-6.9 0H3.5Z"/>
+                    <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h7A2.5 2.5 0 0 1 14 2.5v11A2.5 2.5 0 0 1 11.5 16h-7A2.5 2.5 0 0 1 2 13.5v-11ZM4.5 1A1.5 1.5 0 0 0 3 2.5v11A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 11.5 1h-7Z"/>
+                </svg>
+            </button>
+            <button id="labReportBtn" type="button" title="Open performance report" class="group flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/25 ring-1 ring-white/20 transition-all hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M4 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm4 4a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm4 4a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>
+                    <path d="M0 1.5A1.5 1.5 0 0 1 1.5 0h13A1.5 1.5 0 0 1 16 1.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 0 14.5v-13ZM1.5 1a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-13Z"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Lab data hub dialog -->
+        <div id="dataHubDialog" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="dataHubDialogTitle">
+            <div id="dataHubDialogBackdrop" class="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"></div>
+            <div class="relative flex min-h-full items-center justify-center p-4">
+                <div class="flex max-h-[min(88vh,42rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_100px_-20px_rgba(15,23,42,0.45)]">
+                    <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4">
+                        <div>
+                            <p id="dataHubDialogEyebrow" class="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">DataHub</p>
+                            <h3 id="dataHubDialogTitle" class="mt-1 text-base font-bold tracking-tight text-slate-900">Save dataset</h3>
+                            <p id="dataHubDialogSubtitle" class="mt-0.5 text-xs text-slate-500">Name this dataset so you can reuse it later.</p>
+                        </div>
+                        <button id="dataHubDialogCloseBtn" type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700" aria-label="Close dialog">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+                        </button>
+                    </header>
+                    <div id="dataHubDialogBody" class="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 p-5"></div>
+                    <footer class="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
+                        <button id="dataHubDialogCancelBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50">Cancel</button>
+                        <button id="dataHubDialogConfirmBtn" type="button" class="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-600/20 transition-all hover:-translate-y-0.5 hover:bg-amber-700 active:translate-y-0">Save</button>
+                    </footer>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lab performance report -->
+        <div id="labReportModal" class="fixed inset-0 z-[96] hidden" role="dialog" aria-modal="true" aria-labelledby="labReportTitle">
+            <div id="labReportBackdrop" class="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"></div>
+            <div class="relative flex min-h-full items-center justify-center p-4">
+                <div class="flex max-h-[min(90vh,48rem)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_100px_-20px_rgba(15,23,42,0.45)]">
+                    <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4">
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-500">Performance report</p>
+                            <h3 id="labReportTitle" class="mt-1 text-base font-bold tracking-tight text-slate-900">Training results</h3>
+                            <p id="labReportSubtitle" class="mt-0.5 text-xs text-slate-500">Loss curves, metrics, and class diagnostics.</p>
+                        </div>
+                        <button id="closeLabReportBtn" type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700" aria-label="Close performance report">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+                        </button>
+                    </header>
+                    <div id="labReportScroll" class="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 p-5 sm:p-6">
+                        <div class="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                            <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                <div class="mb-2 flex items-center justify-between">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Loss vs epochs</p>
+                                    <span id="labReportEpochBadge" class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">0 epochs</span>
+                                </div>
+                                <canvas id="labLossChart" class="h-56 w-full rounded-xl bg-slate-50"></canvas>
+                                <div class="mt-2 flex items-center gap-4 text-[10px] font-medium text-slate-500">
+                                    <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-indigo-500"></span>Training</span>
+                                    <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Validation</span>
+                                </div>
+                            </div>
+                            <div id="labReportSummary" class="space-y-3"></div>
+                        </div>
+                        <div id="labReportDetail" class="mt-4"></div>
+                    </div>
+                    <footer class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
+                        <span class="text-xs text-slate-500">Report reflects the latest completed or current epoch.</span>
+                        <button id="labReportDoneBtn" type="button" class="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0">Done</button>
                     </footer>
                 </div>
             </div>
@@ -500,6 +774,13 @@
                                             <span class="text-xs font-medium text-slate-500">seconds</span>
                                         </span>
                                     </div>
+                                    <label for="pointTraceAnimateToggle" class="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-white/80 px-3 py-2">
+                                        <span>
+                                            <span class="block text-xs font-semibold text-slate-700">Animate space</span>
+                                            <span class="block text-[10px] leading-snug text-slate-500">Morph the red space between steps.</span>
+                                        </span>
+                                        <input id="pointTraceAnimateToggle" type="checkbox" checked class="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                    </label>
                                     <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-2">
                                         <button id="pointTraceStartBtn" type="button" class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-indigo-700 active:translate-y-0">Start demo</button>
                                         <button id="pointTracePauseBtn" type="button" disabled class="cursor-not-allowed rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700 opacity-60 transition-colors hover:bg-indigo-100 disabled:hover:bg-indigo-50">Pause</button>
@@ -547,6 +828,40 @@
                     <footer class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
                         <span class="text-xs text-slate-500">Each cascade step stays on screen for the selected duration.</span>
                         <span class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Space to pause</span>
+                    </footer>
+                </div>
+            </div>
+        </div>
+
+        <!-- Point trace worked calculations -->
+        <div id="pointTraceMathModal" class="fixed inset-0 z-[95] hidden" role="dialog" aria-modal="true" aria-labelledby="pointTraceMathTitle">
+            <div id="pointTraceMathBackdrop" class="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"></div>
+
+            <div class="relative flex min-h-full items-center justify-center p-4">
+                <div class="flex max-h-[min(88vh,46rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_100px_-20px_rgba(15,23,42,0.45)]">
+                    <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4">
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-500">Worked solution</p>
+                            <h3 id="pointTraceMathTitle" class="mt-1 text-base font-bold tracking-tight text-slate-900">Step calculations</h3>
+                            <p id="pointTraceMathSubtitle" class="mt-0.5 text-xs text-slate-500">Calculations up to the step where the demo was paused.</p>
+                        </div>
+                        <button id="closePointTraceMathBtn" type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700" aria-label="Close worked calculations">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                            </svg>
+                        </button>
+                    </header>
+
+                    <div id="pointTraceMathScroll" class="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 p-5 sm:p-6">
+                        <div id="pointTraceMathContent" class="space-y-4"></div>
+                    </div>
+
+                    <footer class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
+                        <span class="text-xs text-slate-500">The demo stays paused at the current step.</span>
+                        <div class="flex items-center gap-2">
+                            <button id="resumePointTraceMathBtn" type="button" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-indigo-700 active:translate-y-0">Resume demo</button>
+                            <button id="stopPointTraceMathBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50">Stop</button>
+                        </div>
                     </footer>
                 </div>
             </div>
