@@ -582,6 +582,7 @@
             return false;
         }
 
+        const targetEncodingNotes = [];
         if (dataset.problemType === 'regression') {
             const targetChecks = [
                 { value: dataset.targetXFeature, label: 'Target X' },
@@ -589,10 +590,9 @@
             ];
             for (const target of targetChecks) {
                 if (target.value && target.value !== '__zero__' && !isNumericColumn(target.value, activeRows)) {
-                    dataset.ready = false;
-                    updateLoadButton();
-                    setError(`${target.label} "${target.value}" must contain only numbers.`);
-                    return false;
+                    const targetIndex = getColumnIndex(target.value);
+                    const classCount = new Set(activeRows.map(row => row[targetIndex])).size;
+                    targetEncodingNotes.push(`${target.label} "${target.value}" label-encoded (${classCount} classes)`);
                 }
             }
         }
@@ -601,7 +601,8 @@
         dataset.ready = true;
         updateLoadButton();
         const classSummary = dataset.problemType === 'classification' ? `, class = ${dataset.outputColumn}` : '';
-        setStatus(`Ready: X = ${dataset.xFeature}, Y = ${dataset.yFeature}${classSummary}.`, 'success');
+        const targetSummary = targetEncodingNotes.length ? `, ${targetEncodingNotes.join('; ')}` : '';
+        setStatus(`Ready: X = ${dataset.xFeature}, Y = ${dataset.yFeature}${classSummary}${targetSummary}.`, 'success');
         return true;
     };
 

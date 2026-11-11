@@ -88,6 +88,7 @@
                 complete: false,
                 epoch: 0,
                 epochs: 50,
+                epochDurationMs: 55,
                 history: [],
                 model: null,
                 scaler: null,

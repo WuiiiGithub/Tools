@@ -98,6 +98,17 @@
             </svg>
         </button>
 
+        <!-- Labs toggle button (top right) -->
+        <button id="labsToggleBtn" type="button" aria-label="Open labs" aria-expanded="false" title="Open labs" class="fixed right-36 top-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 ring-1 ring-white/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:brightness-110 active:translate-y-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M5.5 1a.5.5 0 0 1 .5.5V2h4v-.5a.5.5 0 0 1 1 0V2h.5a1.5 1.5 0 0 1 1.5 1.5v1.382a2.5 2.5 0 0 1-.221 1.014L11.5 9.086V13.5A1.5 1.5 0 0 1 10 15H6a1.5 1.5 0 0 1-1.5-1.5V9.086L3.221 5.896A2.5 2.5 0 0 1 3 4.882V3.5A1.5 1.5 0 0 1 4.5 2H5v-.5a.5.5 0 0 1 .5-.5Zm-1.5 2a.5.5 0 0 0-.5.5v1.382c0 .21.044.417.129.61L5 9.257V13.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5V9.257l1.371-3.765a1.5 1.5 0 0 0 .129-.61V3.5a.5.5 0 0 0-.5-.5h-7Z"/>
+                <path d="M6.5 5.5A.5.5 0 0 1 7 5h2a.5.5 0 0 1 0 1H7a.5.5 0 0 1-.5-.5ZM7 7.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5Z"/>
+                <circle cx="6.1" cy="10.6" r="1"/>
+                <circle cx="8.6" cy="12" r=".85"/>
+                <circle cx="9.4" cy="9.6" r=".75"/>
+            </svg>
+        </button>
+
         <!-- Settings toggle button (top right) -->
         <button id="settingsToggleBtn" type="button" aria-label="Open view settings" aria-expanded="false" title="View settings" class="fixed right-4 top-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-slate-200/80 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-900 hover:shadow-xl active:translate-y-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
@@ -115,7 +126,7 @@
                     <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4">
                         <div>
                             <h3 id="settingsTitle" class="text-base font-bold tracking-tight text-slate-900">Settings</h3>
-                            <p class="mt-0.5 text-xs text-slate-500">Adjust the view, grid, labels, datasets, and training lab.</p>
+                            <p class="mt-0.5 text-xs text-slate-500">Adjust the view, grid, and canvas labels.</p>
                         </div>
                         <button id="closeSettingsBtn" type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700" aria-label="Close settings">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
@@ -155,15 +166,7 @@
                                         <span class="block truncate text-[10px] text-slate-400">Canvas label sizes</span>
                                     </span>
                                 </button>
-                                <button type="button" role="tab" id="settingsTabData" aria-controls="settingsPaneData" aria-selected="false" tabindex="-1" data-settings-tab="data" class="settings-tab flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900">
-                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-100 to-orange-100 text-amber-700">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 1a.5.5 0 0 1 .5.5V2h4v-.5a.5.5 0 0 1 1 0V2h.5a1.5 1.5 0 0 1 1.5 1.5v1.382a2.5 2.5 0 0 1-.221 1.014L11.5 9.086V13.5A1.5 1.5 0 0 1 10 15H6a1.5 1.5 0 0 1-1.5-1.5V9.086L3.221 5.896A2.5 2.5 0 0 1 3 4.882V3.5A1.5 1.5 0 0 1 4.5 2H5v-.5a.5.5 0 0 1 .5-.5Zm-1.5 2a.5.5 0 0 0-.5.5v1.382c0 .21.044.417.129.61L5 9.257V13.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5V9.257l1.371-3.765a1.5 1.5 0 0 0 .129-.61V3.5a.5.5 0 0 0-.5-.5h-7Z"/><path d="M6.5 5.5A.5.5 0 0 1 7 5h2a.5.5 0 0 1 0 1H7a.5.5 0 0 1-.5-.5ZM7 7.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5Z"/></svg>
-                                    </span>
-                                    <span class="min-w-0">
-                                        <span class="block text-sm font-semibold">Labs</span>
-                                        <span class="block truncate text-[10px] text-slate-400">Data, train, report</span>
-                                    </span>
-                                </button>
+
                             </nav>
                             <div class="m-3 rounded-2xl border border-slate-200 bg-white/80 p-3 text-[11px] leading-relaxed text-slate-500">
                                 <span class="mb-1 flex items-center gap-1.5 font-semibold text-slate-700">
@@ -308,7 +311,36 @@
                                 </div>
                             </section>
 
-                            <section id="settingsPaneData" data-settings-pane="data" role="tabpanel" aria-labelledby="settingsTabData" class="hidden">
+
+                        </div>
+                    </div>
+
+                    <footer class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
+                        <span class="text-xs text-slate-500">Canvas settings are saved instantly.</span>
+                        <button id="doneSettingsBtn" type="button" class="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0">Done</button>
+                    </footer>
+                </div>
+            </div>
+        </div>
+
+        <!-- Labs modal -->
+        <div id="labsModal" class="fixed inset-0 z-[85] hidden" role="dialog" aria-modal="true" aria-labelledby="labsTitle">
+            <div id="labsBackdrop" class="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"></div>
+
+            <div class="relative flex min-h-full items-center justify-center p-4">
+                <div id="labsPanel" class="flex max-h-[min(90vh,60rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_100px_-20px_rgba(15,23,42,0.45)]">
+                    <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4">
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">Developer lab</p>
+                            <h3 id="labsTitle" class="mt-1 text-base font-bold tracking-tight text-slate-900">Labs</h3>
+                            <p class="mt-0.5 text-xs text-slate-500">Keep datasets in your browser, prepare inputs and colors, then train the red space epoch by epoch.</p>
+                        </div>
+                        <button id="closeLabsBtn" type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700" aria-label="Close labs">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+                        </button>
+                    </header>
+                    <div id="labsBody" class="min-h-0 flex-1 overflow-y-auto bg-white p-5 sm:p-6">
+                            <section id="labsPane" class="space-y-4">
                                 <div class="mb-4 flex items-start justify-between gap-4">
                                     <div>
                                         <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">Labs</p>
@@ -613,22 +645,49 @@
                                                             <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Epochs</span>
                                                             <input id="labEpochs" type="number" min="1" max="1000" step="1" value="50" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-4 focus:ring-indigo-400/15">
                                                         </label>
+                                                        <label for="labEpochDuration" class="block">
+                                                            <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Epoch morph time (ms)</span>
+                                                            <input id="labEpochDuration" type="number" min="16" max="3000" step="1" value="55" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-4 focus:ring-indigo-400/15">
+                                                            <span class="mt-1 block text-[10px] leading-snug text-slate-400">The red space morphs from the previous weights to the new weights over this time.</span>
+                                                        </label>
                                                         <div class="rounded-xl border border-indigo-100 bg-white/80 px-3 py-2">
                                                             <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Architecture</p>
-                                                            <p class="mt-1 font-mono text-[11px] font-semibold text-indigo-700">2 inputs → 2 tanh → 2 outputs</p>
+                                                            <p id="labArchitectureLabel" class="mt-1 font-mono text-[11px] font-semibold text-indigo-700">2 inputs → 2 outputs</p>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <div class="grid gap-2 sm:grid-cols-2">
-                                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Training loss</p>
-                                                    <p id="labTrainLoss" class="mt-1 font-mono text-lg font-bold text-slate-800">—</p>
+                                            <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Metrics</p>
+                                                        <p class="mt-1 text-[10px] leading-snug text-slate-400">Training and validation loss update every epoch.</p>
+                                                    </div>
+                                                    <span id="labMetricsBadge" class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">0 epochs</span>
                                                 </div>
-                                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Validation loss</p>
-                                                    <p id="labValLoss" class="mt-1 font-mono text-lg font-bold text-slate-800">—</p>
+                                                <canvas id="labMetricsChart" class="mt-3 h-44 w-full rounded-xl bg-slate-50"></canvas>
+                                                <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+                                                        <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Training loss</p>
+                                                        <p id="labTrainLoss" class="mt-1 font-mono text-base font-bold text-slate-800">—</p>
+                                                    </div>
+                                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+                                                        <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Validation loss</p>
+                                                        <p id="labValLoss" class="mt-1 font-mono text-base font-bold text-slate-800">—</p>
+                                                    </div>
+                                                    <div class="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2">
+                                                        <p id="labModelScoreLabel" class="text-[10px] font-semibold uppercase tracking-wider text-indigo-500">Score</p>
+                                                        <p id="labModelScore" class="mt-1 font-mono text-base font-bold text-indigo-800">—</p>
+                                                    </div>
+                                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+                                                        <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Last epoch</p>
+                                                        <p id="labEpochTime" class="mt-1 font-mono text-base font-bold text-slate-800">—</p>
+                                                    </div>
+                                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+                                                        <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Avg epoch</p>
+                                                        <p id="labAvgEpochTime" class="mt-1 font-mono text-base font-bold text-slate-800">—</p>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <p id="labModelHint" class="rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-[11px] leading-relaxed text-slate-500">Regression can predict selected target columns; classification learns two class probabilities and colors them to match your palette.</p>
@@ -636,12 +695,10 @@
                                     </div>
                                 </div>
                             </section>
-                        </div>
                     </div>
-
                     <footer class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-3">
-                        <span class="text-xs text-slate-500">Canvas and dataset settings are saved instantly.</span>
-                        <button id="doneSettingsBtn" type="button" class="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0">Done</button>
+                        <span class="text-xs text-slate-500">Datasets stay in this browser. Training edits apply automatically.</span>
+                        <button id="doneLabsBtn" type="button" class="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0">Done</button>
                     </footer>
                 </div>
             </div>
@@ -715,7 +772,7 @@
                                     <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Validation</span>
                                 </div>
                             </div>
-                            <div id="labReportSummary" class="space-y-3"></div>
+                            <div id="labReportSummary" class="grid gap-3 sm:grid-cols-2"></div>
                         </div>
                         <div id="labReportDetail" class="mt-4"></div>
                     </div>

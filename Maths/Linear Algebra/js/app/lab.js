@@ -7,7 +7,9 @@
 
     const STORAGE_KEY = 'visuo.lab.datasets.v1';
     const DEFAULT_CLASS_COLORS = Config.DEFAULT_CLASS_COLORS.slice();
-    const LAB_TRAIN_INTERVAL_MS = 55;
+    const LAB_EPOCH_DEFAULT_MS = 55;
+    const LAB_EPOCH_MIN_MS = 16;
+    const LAB_EPOCH_MAX_MS = 3000;
     const LAB_HUBER_DELTA = 1;
 
     const clone = value => JSON.parse(JSON.stringify(value));
@@ -27,6 +29,13 @@
         }
         return normalized.toLocaleString(undefined, { maximumFractionDigits: digits });
     };
+    const formatEpochTime = value => {
+        if (!Number.isFinite(value)) {
+            return '—';
+        }
+        const digits = value < 10 ? 2 : 1;
+        return `${value.toFixed(digits)} ms`;
+    };
     const formatDate = value => {
         const date = new Date(value);
         return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -35,14 +44,6 @@
         || DEFAULT_CLASS_COLORS[index]
         || DEFAULT_CLASS_COLORS[0];
     const classifyColor = index => State.dataset.classColors[index] || DEFAULT_CLASS_COLORS[index] || DEFAULT_CLASS_COLORS[0];
-    const sigmoid = value => {
-        if (value >= 0) {
-            const z = Math.exp(-value);
-            return 1 / (1 + z);
-        }
-        const z = Math.exp(value);
-        return z / (1 + z);
-    };
     const mean = values => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
     const stdDev = function (values, average) {
         const variance = values.reduce((sum, value) => sum + Math.pow(value - average, 2), 0) / Math.max(1, values.length);
@@ -495,16 +496,19 @@
         const learningRate = MathCore.clamp(Number.parseFloat(DOM.labLearningRate ? DOM.labLearningRate.value : training.learningRate) || 0.03, 0.00001, 1);
         const validationSplit = MathCore.clamp(Number.parseFloat(DOM.labValidationSplit ? DOM.labValidationSplit.value : training.validationSplit) || 0, 0, 0.9);
         const epochs = Math.round(MathCore.clamp(Number.parseInt(DOM.labEpochs ? DOM.labEpochs.value : training.epochs, 10) || 50, 1, 1000));
+        const epochDurationMs = Math.round(MathCore.clamp(Number.parseInt(DOM.labEpochDuration ? DOM.labEpochDuration.value : training.epochDurationMs, 10) || LAB_EPOCH_DEFAULT_MS, LAB_EPOCH_MIN_MS, LAB_EPOCH_MAX_MS));
         training.learningRate = learningRate;
         training.validationSplit = validationSplit;
         training.epochs = epochs;
+        training.epochDurationMs = epochDurationMs;
         return {
             loss: DOM.labLossSelect ? DOM.labLossSelect.value : 'mse',
             optimizer: DOM.labOptimizerSelect ? DOM.labOptimizerSelect.value : 'adam',
             batchMode: DOM.labBatchModeSelect ? DOM.labBatchModeSelect.value : 'batch',
             learningRate,
             validationSplit,
-            epochs
+            epochs,
+            epochDurationMs
         };
     };
 
@@ -531,8 +535,43 @@
             return null;
         }
 
+        const targetDescriptor = function (feature, columnIndex) {
+            if (feature === '__zero__') {
+                return { kind: 'zero' };
+            }
+            if (columnIndex === -1) {
+                return { kind: 'input' };
+            }
+            const values = rows.map(row => row[columnIndex]);
+            const numeric = values.every(value => value !== '' && Number.isFinite(Number(value)));
+            if (numeric) {
+                return { kind: 'column', columnIndex };
+            }
+            const mapping = new Map();
+            values.forEach(value => {
+                if (!mapping.has(value)) {
+                    mapping.set(value, mapping.size);
+                }
+            });
+            return { kind: 'encoded', columnIndex, mapping };
+        };
+        const targetXDescriptor = targetDescriptor(dataset.targetXFeature, targetXIndex);
+        const targetYDescriptor = targetDescriptor(dataset.targetYFeature, targetYIndex);
+        const readTargetValue = function (descriptor, row, fallbackValue) {
+            if (descriptor.kind === 'zero') {
+                return 0;
+            }
+            if (descriptor.kind === 'input') {
+                return fallbackValue;
+            }
+            if (descriptor.kind === 'encoded') {
+                const encoded = descriptor.mapping.get(row[descriptor.columnIndex]);
+                return Number.isFinite(encoded) ? encoded : 0;
+            }
+            return Number(row[descriptor.columnIndex]);
+        };
+
         const rawInputs = [];
-        const rawTargets = [];
         const samples = [];
 
         rows.forEach((row, index) => {
@@ -547,19 +586,12 @@
                 classIndex = readClassIndex(row, dataset);
                 target = classIndex === 0 ? [1, 0] : [0, 1];
             } else {
-                const targetX = dataset.targetXFeature === '__zero__'
-                    ? 0
-                    : (targetXIndex === -1 ? input[0] : Number(row[targetXIndex]));
-                const targetY = dataset.targetYFeature === '__zero__'
-                    ? 0
-                    : (targetYIndex === -1 ? input[1] : Number(row[targetYIndex]));
+                const targetX = readTargetValue(targetXDescriptor, row, input[0]);
+                const targetY = readTargetValue(targetYDescriptor, row, input[1]);
                 target = [Number.isFinite(targetX) ? targetX : 0, Number.isFinite(targetY) ? targetY : 0];
             }
 
             rawInputs.push(input);
-            if (!classification) {
-                rawTargets.push(target);
-            }
             samples.push({ input, target, classIndex, sourceIndex: index });
         });
 
@@ -570,22 +602,15 @@
         const inputColumns = [rawInputs.map(item => item[0]), rawInputs.map(item => item[1])];
         const inputMean = inputColumns.map(mean);
         const inputStd = inputColumns.map((values, index) => stdDev(values, inputMean[index]));
-        const targetMean = classification ? [0, 0] : [mean(rawTargets.map(item => item[0])), mean(rawTargets.map(item => item[1]))];
-        const targetStd = classification
-            ? [1, 1]
-            : [stdDev(rawTargets.map(item => item[0]), targetMean[0]), stdDev(rawTargets.map(item => item[1]), targetMean[1])];
+        const targetMean = [0, 0];
+        const targetStd = [1, 1];
 
         samples.forEach(sample => {
             sample.x = [
                 (sample.input[0] - inputMean[0]) / inputStd[0],
                 (sample.input[1] - inputMean[1]) / inputStd[1]
             ];
-            sample.y = classification
-                ? sample.target.slice()
-                : [
-                    (sample.target[0] - targetMean[0]) / targetStd[0],
-                    (sample.target[1] - targetMean[1]) / targetStd[1]
-                ];
+            sample.y = sample.target.slice();
         });
 
         return {
@@ -636,46 +661,167 @@
         };
     };
 
-    const initModel = function (rng) {
-        const random = () => {
-            let u = 0;
-            let v = 0;
-            while (u === 0) {
-                u = rng();
-            }
-            while (v === 0) {
-                v = rng();
-            }
-            return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-        };
-        const scale = 0.8;
-        return {
-            W1: [[random() * scale, random() * scale], [random() * scale, random() * scale]],
-            b1: [0, 0],
-            W2: [[random() * scale, random() * scale], [random() * scale, random() * scale]],
-            b2: [0, 0]
-        };
+    const randomNormal = function (rng) {
+        let u = 0;
+        let v = 0;
+        while (u === 0) {
+            u = rng();
+        }
+        while (v === 0) {
+            v = rng();
+        }
+        return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
     };
 
-    const zeroGradients = () => ({
-        W1: [[0, 0], [0, 0]],
-        b1: [0, 0],
-        W2: [[0, 0], [0, 0]],
-        b2: [0, 0]
-    });
+    const randomMatrix = function (rng, scale = 0.8) {
+        return [
+            [randomNormal(rng) * scale, randomNormal(rng) * scale],
+            [randomNormal(rng) * scale, randomNormal(rng) * scale]
+        ];
+    };
 
-    const forwardSample = function (model, x, classification) {
-        const z1 = [
-            model.W1[0][0] * x[0] + model.W1[0][1] * x[1] + model.b1[0],
-            model.W1[1][0] * x[0] + model.W1[1][1] * x[1] + model.b1[1]
+    const effectiveMatrix = function (layer) {
+        const values = clone(layer.values || [[1, 0], [0, 1]]);
+        if (layer.isInverse) {
+            return MathCore.calculateInverse(values) || [[1, 0], [0, 1]];
+        }
+        return values;
+    };
+
+    const createDefaultArchitecture = function (rng, classification) {
+        const cascade = [
+            {
+                id: 'lab_w1',
+                type: 'matrix',
+                values: randomMatrix(rng),
+                bias: [0, 0],
+                isInverse: false,
+                enabled: true
+            },
+            {
+                id: 'lab_a1',
+                type: 'activation',
+                name: 'tanh',
+                enabled: true
+            },
+            {
+                id: 'lab_w2',
+                type: 'matrix',
+                values: randomMatrix(rng),
+                bias: [0, 0],
+                isInverse: false,
+                enabled: true
+            }
         ];
-        const a1 = [Math.tanh(z1[0]), Math.tanh(z1[1])];
-        const z2 = [
-            model.W2[0][0] * a1[0] + model.W2[0][1] * a1[1] + model.b2[0],
-            model.W2[1][0] * a1[0] + model.W2[1][1] * a1[1] + model.b2[1]
-        ];
-        const output = classification ? [sigmoid(z2[0]), sigmoid(z2[1])] : z2;
-        return { x, z1, a1, z2, output };
+        if (classification) {
+            cascade.push({
+                id: 'lab_a2',
+                type: 'activation',
+                name: 'sigmoid',
+                enabled: true
+            });
+        }
+        State.matrixCascade = cascade;
+        State.activeActivationName = 'linear';
+    };
+
+    const ensureTrainingArchitecture = function (rng, classification) {
+        if (State.matrixCascade.length === 0) {
+            createDefaultArchitecture(rng, classification);
+        }
+
+        const hasEnabledMatrix = State.matrixCascade.some(layer => layer.enabled !== false && App.isMatrixLayer(layer));
+        if (!hasEnabledMatrix) {
+            State.matrixCascade.unshift({
+                id: `lab_w_${Date.now()}`,
+                type: 'matrix',
+                values: randomMatrix(rng),
+                bias: [0, 0],
+                isInverse: false,
+                enabled: true
+            });
+        }
+
+        if (App.hasExplicitActivationLayers()) {
+            State.matrixCascade = State.matrixCascade.filter(layer => layer.id !== 'lab_legacy_activation');
+        } else {
+            const legacyActivation = State.activeActivationName || 'linear';
+            if (legacyActivation !== 'linear') {
+                State.matrixCascade.push({
+                    id: 'lab_legacy_activation',
+                    type: 'activation',
+                    name: legacyActivation,
+                    enabled: true
+                });
+                State.activeActivationName = 'linear';
+            }
+        }
+
+        const withoutOutput = State.matrixCascade.filter(layer => layer.id !== 'lab_class_sigmoid');
+        if (classification) {
+            const enabledLayers = withoutOutput.filter(layer => layer.enabled !== false);
+            const lastLayer = enabledLayers[enabledLayers.length - 1];
+            const hasSigmoidOutput = lastLayer && App.isActivationLayer(lastLayer) && lastLayer.name === 'sigmoid';
+            if (!hasSigmoidOutput) {
+                withoutOutput.push({
+                    id: 'lab_class_sigmoid',
+                    type: 'activation',
+                    name: 'sigmoid',
+                    enabled: true
+                });
+            }
+        }
+        State.matrixCascade = withoutOutput;
+    };
+
+    const buildTrainingArchitecture = function (rng, classification) {
+        ensureTrainingArchitecture(rng, classification);
+        const nodes = [];
+        State.matrixCascade.forEach(layer => {
+            if (layer.enabled === false) {
+                return;
+            }
+            if (App.isActivationLayer(layer)) {
+                nodes.push({
+                    kind: 'activation',
+                    layerId: layer.id,
+                    name: layer.name || 'linear'
+                });
+                return;
+            }
+            nodes.push({
+                kind: 'matrix',
+                layerId: layer.id,
+                W: effectiveMatrix(layer),
+                b: clone(layer.bias || [0, 0]),
+                storedInverse: Boolean(layer.isInverse)
+            });
+        });
+        return nodes;
+    };
+
+    const zeroGradients = model => model.map(node => node.kind === 'matrix'
+        ? { W: [[0, 0], [0, 0]], b: [0, 0] }
+        : null);
+
+    const forwardSample = function (model, x) {
+        let current = x.slice();
+        const nodes = [];
+        model.forEach(node => {
+            if (node.kind === 'activation') {
+                const activated = Visuo.Activation.applyPoint(current, node.name);
+                nodes.push({ kind: 'activation', input: current, z: current, a: activated });
+                current = activated;
+                return;
+            }
+            const z = [
+                node.W[0][0] * current[0] + node.W[0][1] * current[1] + node.b[0],
+                node.W[1][0] * current[0] + node.W[1][1] * current[1] + node.b[1]
+            ];
+            nodes.push({ kind: 'matrix', input: current, z });
+            current = z;
+        });
+        return { x, nodes, output: current };
     };
 
     const outputGradient = function (output, target, loss, classification) {
@@ -717,41 +863,42 @@
         return 0.5 * (differences[0] * differences[0] + differences[1] * differences[1]);
     };
 
-    const accumulateGradient = function (gradients, cache, target, loss, classification) {
-        const dz2 = outputGradient(cache.output, target, loss, classification);
-        for (let i = 0; i < 2; i++) {
-            gradients.b2[i] += dz2[i];
-            for (let j = 0; j < 2; j++) {
-                gradients.W2[i][j] += dz2[i] * cache.a1[j];
+    const accumulateGradient = function (gradients, cache, model, target, loss, classification) {
+        let delta = outputGradient(cache.output, target, loss, classification);
+        for (let index = model.length - 1; index >= 0; index--) {
+            const node = model[index];
+            const nodeCache = cache.nodes[index];
+            if (node.kind === 'activation') {
+                const definition = Visuo.Activation.getDefinition(node.name);
+                delta = delta.map((value, position) => value * definition.derivative(nodeCache.z[position]));
+                continue;
             }
-        }
-        const da1 = [
-            dz2[0] * cache.model.W2[0][0] + dz2[1] * cache.model.W2[1][0],
-            dz2[0] * cache.model.W2[0][1] + dz2[1] * cache.model.W2[1][1]
-        ];
-        const dz1 = [
-            da1[0] * (1 - cache.a1[0] * cache.a1[0]),
-            da1[1] * (1 - cache.a1[1] * cache.a1[1])
-        ];
-        for (let i = 0; i < 2; i++) {
-            gradients.b1[i] += dz1[i];
-            for (let j = 0; j < 2; j++) {
-                gradients.W1[i][j] += dz1[i] * cache.x[j];
+            const gradient = gradients[index];
+            const input = nodeCache.input;
+            for (let row = 0; row < 2; row++) {
+                gradient.b[row] += delta[row];
+                for (let column = 0; column < 2; column++) {
+                    gradient.W[row][column] += delta[row] * input[column];
+                }
             }
+            delta = [
+                delta[0] * node.W[0][0] + delta[1] * node.W[1][0],
+                delta[0] * node.W[0][1] + delta[1] * node.W[1][1]
+            ];
         }
     };
 
     const applyGradient = function (model, gradients, config, optimizerState) {
         if (config.optimizer === 'sgd') {
-            ['b1', 'b2'].forEach(key => {
-                for (let index = 0; index < 2; index++) {
-                    model[key][index] -= config.learningRate * gradients[key][index];
+            model.forEach((node, index) => {
+                if (node.kind !== 'matrix') {
+                    return;
                 }
-            });
-            ['W1', 'W2'].forEach(key => {
+                const gradient = gradients[index];
                 for (let row = 0; row < 2; row++) {
+                    node.b[row] -= config.learningRate * gradient.b[row];
                     for (let column = 0; column < 2; column++) {
-                        model[key][row][column] -= config.learningRate * gradients[key][row][column];
+                        node.W[row][column] -= config.learningRate * gradient.W[row][column];
                     }
                 }
             });
@@ -759,45 +906,44 @@
         }
 
         optimizerState.step += 1;
-        const updateScalar = function (param, grad, key, index) {
+        const updateScalar = function (param, grad, momentum, velocity, index) {
             if (config.optimizer === 'momentum') {
-                optimizerState.momentum[key][index] = 0.9 * optimizerState.momentum[key][index] - config.learningRate * grad;
-                param[index] += optimizerState.momentum[key][index];
+                momentum[index] = 0.9 * momentum[index] - config.learningRate * grad;
+                param[index] += momentum[index];
             } else if (config.optimizer === 'rmsprop') {
-                optimizerState.velocity[key][index] = 0.9 * optimizerState.velocity[key][index] + 0.1 * grad * grad;
-                param[index] -= config.learningRate * grad / (Math.sqrt(optimizerState.velocity[key][index]) + 1e-8);
+                velocity[index] = 0.9 * velocity[index] + 0.1 * grad * grad;
+                param[index] -= config.learningRate * grad / (Math.sqrt(velocity[index]) + 1e-8);
             } else {
-                optimizerState.momentum[key][index] = 0.9 * optimizerState.momentum[key][index] + 0.1 * grad;
-                optimizerState.velocity[key][index] = 0.999 * optimizerState.velocity[key][index] + 0.001 * grad * grad;
-                const mHat = optimizerState.momentum[key][index] / (1 - Math.pow(0.9, optimizerState.step));
-                const vHat = optimizerState.velocity[key][index] / (1 - Math.pow(0.999, optimizerState.step));
+                momentum[index] = 0.9 * momentum[index] + 0.1 * grad;
+                velocity[index] = 0.999 * velocity[index] + 0.001 * grad * grad;
+                const mHat = momentum[index] / (1 - Math.pow(0.9, optimizerState.step));
+                const vHat = velocity[index] / (1 - Math.pow(0.999, optimizerState.step));
                 param[index] -= config.learningRate * mHat / (Math.sqrt(vHat) + 1e-8);
             }
         };
 
-        ['b1', 'b2'].forEach(key => {
-            for (let index = 0; index < 2; index++) {
-                updateScalar(model[key], gradients[key][index], key, index);
+        model.forEach((node, index) => {
+            if (node.kind !== 'matrix') {
+                return;
             }
-        });
-        ['W1', 'W2'].forEach(key => {
+            const gradient = gradients[index];
+            const momentum = optimizerState.momentum[index];
+            const velocity = optimizerState.velocity[index];
             for (let row = 0; row < 2; row++) {
+                updateScalar(node.b, gradient.b[row], momentum.b, velocity.b, row);
                 for (let column = 0; column < 2; column++) {
-                    updateScalar(model[key][row], gradients[key][row][column], key, [row, column]);
+                    updateScalar(node.W[row], gradient.W[row][column], momentum.W[row], velocity.W[row], column);
                 }
             }
         });
     };
 
-    const createOptimizerState = function () {
+    const createOptimizerState = function (model) {
+        const zeros = () => ({ W: [[0, 0], [0, 0]], b: [0, 0] });
         return {
             step: 0,
-            momentum: {
-                W1: [[0, 0], [0, 0]], b1: [0, 0], W2: [[0, 0], [0, 0]], b2: [0, 0]
-            },
-            velocity: {
-                W1: [[0, 0], [0, 0]], b1: [0, 0], W2: [[0, 0], [0, 0]], b2: [0, 0]
-            }
+            momentum: model.map(node => node.kind === 'matrix' ? zeros() : null),
+            velocity: model.map(node => node.kind === 'matrix' ? zeros() : null)
         };
     };
 
@@ -823,18 +969,18 @@
         const batchSize = batchSizeFor(config.batchMode, context.trainSamples.length);
         for (let start = 0; start < indices.length; start += batchSize) {
             const batch = indices.slice(start, start + batchSize).map(index => context.trainSamples[index]);
-            const gradients = zeroGradients();
+            const gradients = zeroGradients(training.model);
             batch.forEach(sample => {
-                const cache = forwardSample(training.model, sample.x, context.classification);
-                cache.model = training.model;
-                accumulateGradient(gradients, cache, sample.y, config.loss, context.classification);
+                const cache = forwardSample(training.model, sample.x);
+                accumulateGradient(gradients, cache, training.model, sample.y, config.loss, context.classification);
             });
             const divisor = Math.max(1, batch.length);
-            ['b1', 'b2'].forEach(key => {
-                gradients[key] = gradients[key].map(value => value / divisor);
-            });
-            ['W1', 'W2'].forEach(key => {
-                gradients[key] = gradients[key].map(row => row.map(value => value / divisor));
+            training.model.forEach((node, index) => {
+                if (node.kind !== 'matrix') {
+                    return;
+                }
+                gradients[index].b = gradients[index].b.map(value => value / divisor);
+                gradients[index].W = gradients[index].W.map(row => row.map(value => value / divisor));
             });
             applyGradient(training.model, gradients, config, context.optimizerState);
             batches.push(batch.length);
@@ -845,7 +991,7 @@
                 return null;
             }
             return mean(samples.map(sample => {
-                const output = forwardSample(training.model, sample.x, context.classification).output;
+                const output = forwardSample(training.model, sample.x).output;
                 return sampleLoss(output, sample.y, config.loss, context.classification);
             }));
         };
@@ -859,61 +1005,117 @@
     const applyModelToCascade = function (model, classification, scaler) {
         const inputStd = scaler ? scaler.inputStd : [1, 1];
         const inputMean = scaler ? scaler.inputMean : [0, 0];
-        const firstValues = model.W1.map((row, rowIndex) => row.map((value, columnIndex) => value / inputStd[columnIndex]));
-        const firstBias = model.b1.map((value, rowIndex) => {
-            return value - (
-                model.W1[rowIndex][0] * inputMean[0] / inputStd[0] +
-                model.W1[rowIndex][1] * inputMean[1] / inputStd[1]
-            );
-        });
-        const cascade = [
-            {
-                id: 'lab_w1',
-                type: 'matrix',
-                values: firstValues,
-                bias: firstBias,
-                isInverse: false,
-                enabled: true
-            },
-            {
-                id: 'lab_a1',
-                type: 'activation',
-                name: 'tanh',
-                enabled: true
-            },
-            {
-                id: 'lab_w2',
-                type: 'matrix',
-                values: clone(model.W2),
-                bias: clone(model.b2),
-                isInverse: false,
-                enabled: true
+        let firstMatrix = true;
+        model.forEach(node => {
+            if (node.kind !== 'matrix') {
+                return;
             }
-        ];
-        if (classification) {
-            cascade.push({
-                id: 'lab_a2',
-                type: 'activation',
-                name: 'sigmoid',
-                enabled: true
-            });
-        } else if (scaler) {
-            cascade.push({
-                id: 'lab_out',
-                type: 'matrix',
-                values: [[scaler.targetStd[0], 0], [0, scaler.targetStd[1]]],
-                bias: scaler.targetMean.slice(),
-                isInverse: false,
-                enabled: true
-            });
-        }
-        State.matrixCascade = cascade;
+            const layer = State.matrixCascade.find(item => item.id === node.layerId);
+            if (!layer || layer.enabled === false) {
+                return;
+            }
+            let values = clone(node.W);
+            let bias = clone(node.b);
+            if (firstMatrix) {
+                values = values.map((row, rowIndex) => row.map((value, columnIndex) => value / inputStd[columnIndex]));
+                bias = bias.map((value, rowIndex) => value - (
+                    node.W[rowIndex][0] * inputMean[0] / inputStd[0] +
+                    node.W[rowIndex][1] * inputMean[1] / inputStd[1]
+                ));
+                firstMatrix = false;
+            }
+            layer.values = node.storedInverse
+                ? (MathCore.calculateInverse(values) || clone(values))
+                : values;
+            layer.bias = bias;
+            layer.isInverse = node.storedInverse;
+        });
         State.activeActivationName = 'linear';
+    };
+
+    const cloneModel = function (model) {
+        return clone(model);
+    };
+
+    const interpolateMatrix = function (from, to, amount) {
+        return from.map((row, rowIndex) => row.map((value, columnIndex) => {
+            return value + (to[rowIndex][columnIndex] - value) * amount;
+        }));
+    };
+
+    const interpolateVector = function (from, to, amount) {
+        return from.map((value, index) => value + (to[index] - value) * amount);
+    };
+
+    const interpolateModel = function (from, to, amount) {
+        return from.map((node, index) => {
+            const target = to[index];
+            if (node.kind !== 'matrix') {
+                return clone(node);
+            }
+            return {
+                ...clone(node),
+                W: interpolateMatrix(node.W, target.W, amount),
+                b: interpolateVector(node.b, target.b, amount)
+            };
+        });
+    };
+
+    const stopModelMorph = function (snapToTarget) {
+        const training = State.lab.training;
+        if (training.morphFrame) {
+            global.cancelAnimationFrame(training.morphFrame);
+            training.morphFrame = null;
+        }
+        if (snapToTarget && training.morphTarget && activeContext) {
+            applyModelToCascade(training.morphTarget, activeContext.classification, training.scaler);
+            App.drawScene();
+        }
+        training.morphTarget = null;
+    };
+
+    const startModelMorph = function (from, to, duration, onDone) {
+        const training = State.lab.training;
+        stopModelMorph(false);
+        if (!activeContext) {
+            return;
+        }
+        const context = activeContext;
+        const safeDuration = Math.max(LAB_EPOCH_MIN_MS, duration || LAB_EPOCH_DEFAULT_MS);
+        let startedAt = null;
+        training.morphTarget = cloneModel(to);
+        const step = now => {
+            if (!training.active || !training.playing) {
+                stopModelMorph(true);
+                return;
+            }
+            if (startedAt === null) {
+                startedAt = now;
+            }
+            const elapsed = now - startedAt;
+            const progress = MathCore.clamp(elapsed / safeDuration, 0, 1);
+            const eased = progress < 0.5
+                ? 2 * progress * progress
+                : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+            const displayModel = progress >= 1 ? to : interpolateModel(from, to, eased);
+            applyModelToCascade(displayModel, context.classification, training.scaler);
+            App.drawScene();
+            if (progress < 1) {
+                training.morphFrame = global.requestAnimationFrame(step);
+                return;
+            }
+            training.morphFrame = null;
+            training.morphTarget = null;
+            if (onDone) {
+                onDone();
+            }
+        };
+        training.morphFrame = global.requestAnimationFrame(step);
     };
 
     const buildPredictions = function (context) {
         const predictions = context.samples.map(sample => {
-            const output = forwardSample(context.training.model, sample.x, context.classification).output;
+            const output = forwardSample(context.training.model, sample.x).output;
             const predictedClass = context.classification ? (output[0] >= output[1] ? 0 : 1) : null;
             return {
                 input: sample.input.slice(),
@@ -1004,6 +1206,31 @@
         };
     };
 
+    App.syncLabArchitecture = function () {
+        if (!DOM.labArchitectureLabel) {
+            return;
+        }
+        const layers = State.matrixCascade.filter(layer => layer.enabled !== false);
+        const parts = ['2 inputs'];
+        let matrixCount = 0;
+        layers.forEach(layer => {
+            if (App.isActivationLayer(layer)) {
+                parts.push(layer.name || 'linear');
+                return;
+            }
+            matrixCount += 1;
+            parts.push(`W${matrixCount}`);
+        });
+        if (!App.hasExplicitActivationLayers()) {
+            const legacyActivation = State.activeActivationName || 'linear';
+            if (legacyActivation !== 'linear') {
+                parts.push(legacyActivation);
+            }
+        }
+        parts.push('2 outputs');
+        DOM.labArchitectureLabel.textContent = parts.join(' → ');
+    };
+
     const syncTrainingButtons = function () {
         const training = State.lab.training;
         if (DOM.labPlayIcon) {
@@ -1043,6 +1270,32 @@
         if (DOM.labValLoss) {
             DOM.labValLoss.textContent = last && Number.isFinite(last.validationLoss) ? formatNumber(last.validationLoss, 5) : '—';
         }
+        if (DOM.labMetricsBadge) {
+            DOM.labMetricsBadge.textContent = `${training.epoch} epoch${training.epoch === 1 ? '' : 's'}`;
+        }
+        if (DOM.labModelScoreLabel) {
+            DOM.labModelScoreLabel.textContent = training.metrics && training.metrics.task === 'classification' ? 'Accuracy' : 'R²';
+        }
+        if (DOM.labModelScore) {
+            DOM.labModelScore.textContent = !training.metrics
+                ? '—'
+                : training.metrics.task === 'classification'
+                    ? `${(training.metrics.accuracy * 100).toFixed(1)}%`
+                    : formatNumber(training.metrics.r2, 4);
+        }
+        const timedHistory = training.history.filter(item => Number.isFinite(item.timeMs));
+        const averageTime = timedHistory.length
+            ? timedHistory.reduce((sum, item) => sum + item.timeMs, 0) / timedHistory.length
+            : null;
+        if (DOM.labEpochTime) {
+            DOM.labEpochTime.textContent = last ? formatEpochTime(last.timeMs) : '—';
+        }
+        if (DOM.labAvgEpochTime) {
+            DOM.labAvgEpochTime.textContent = formatEpochTime(averageTime);
+        }
+        if (DOM.labMetricsChart && DOM.labsModal && !DOM.labsModal.classList.contains('hidden')) {
+            global.requestAnimationFrame(drawMetricsChart);
+        }
         if (DOM.labModelStatus) {
             if (!State.dataset.loaded) {
                 DOM.labModelStatus.textContent = 'Load prepared points, then press play to train epoch by epoch.';
@@ -1065,6 +1318,7 @@
             DOM.labLossSelect.value = DOM.labLossSelect.value || 'mse';
         }
         syncTrainingReadout();
+        App.syncLabArchitecture();
         if (DOM.labResultActions) {
             DOM.labResultActions.classList.toggle('hidden', !training.complete);
         }
@@ -1081,6 +1335,7 @@
             clearTimeout(training.timer);
             training.timer = null;
         }
+        stopModelMorph(false);
         training.active = false;
         training.playing = false;
         training.complete = false;
@@ -1127,7 +1382,7 @@
         }
 
         const training = State.lab.training;
-        training.model = initModel(rng);
+        training.model = buildTrainingArchitecture(rng, prepared.classification);
         training.scaler = {
             inputMean: prepared.inputMean,
             inputStd: prepared.inputStd,
@@ -1136,6 +1391,7 @@
         };
         applyModelToCascade(training.model, prepared.classification, training.scaler);
         App.renderMatrixCascade();
+        App.syncLabArchitecture();
         App.fitViewToScene();
         App.drawScene();
 
@@ -1152,7 +1408,7 @@
             targetMean: prepared.targetMean,
             targetStd: prepared.targetStd,
             targetLabels: prepared.targetLabels,
-            optimizerState: createOptimizerState()
+            optimizerState: createOptimizerState(training.model)
         };
     };
 
@@ -1181,32 +1437,46 @@
         App.showToast('Training complete', 'success');
     };
 
-    const scheduleTrainingTick = function () {
+    const scheduleTrainingTick = function (delayMs = 0) {
         const training = State.lab.training;
         if (!training.active || !training.playing || !activeContext) {
             return;
         }
+        const morphDuration = training.epochDurationMs || LAB_EPOCH_DEFAULT_MS;
         training.timer = setTimeout(() => {
             training.timer = null;
             if (!training.active || !training.playing || !activeContext) {
                 return;
             }
-            const result = trainEpoch(activeContext);
+            const context = activeContext;
+            const startedAt = global.performance && typeof global.performance.now === 'function'
+                ? global.performance.now()
+                : Date.now();
+            const previousModel = cloneModel(context.training.model);
+            const result = trainEpoch(context);
+            const finishedAt = global.performance && typeof global.performance.now === 'function'
+                ? global.performance.now()
+                : Date.now();
             training.epoch += 1;
             training.history.push({
                 epoch: training.epoch,
                 loss: result.loss,
-                validationLoss: result.validationLoss
+                validationLoss: result.validationLoss,
+                timeMs: Math.max(0, finishedAt - startedAt)
             });
-            applyModelToCascade(training.model, activeContext.classification, training.scaler);
-            App.drawScene();
+            buildPredictions(context);
             syncTrainingReadout();
-            if (training.epoch >= training.epochs) {
-                finishTraining();
-                return;
-            }
-            scheduleTrainingTick();
-        }, LAB_TRAIN_INTERVAL_MS);
+            startModelMorph(previousModel, cloneModel(context.training.model), morphDuration, () => {
+                if (!training.active || !training.playing) {
+                    return;
+                }
+                if (training.epoch >= training.epochs) {
+                    finishTraining();
+                    return;
+                }
+                scheduleTrainingTick();
+            });
+        }, Math.max(0, delayMs));
     };
 
     const beginTraining = function () {
@@ -1216,6 +1486,7 @@
             clearTimeout(training.timer);
             training.timer = null;
         }
+        stopModelMorph(false);
         training.active = false;
         training.playing = false;
         training.complete = false;
@@ -1251,12 +1522,17 @@
                 clearTimeout(training.timer);
                 training.timer = null;
             }
+            stopModelMorph(true);
             syncTrainingReadout();
             return;
         }
         if (training.complete) {
             App.resetLabTraining({ keepDataset: true });
             beginTraining();
+            return;
+        }
+        if (training.active && training.epoch >= training.epochs) {
+            finishTraining();
             return;
         }
         if (training.active && training.epoch > 0) {
@@ -1311,6 +1587,10 @@
         const training = State.lab.training;
         const metrics = training.metrics;
         const last = training.history[training.history.length - 1] || { loss: null, validationLoss: null };
+        const timedHistory = training.history.filter(item => Number.isFinite(item.timeMs));
+        const averageTime = timedHistory.length
+            ? timedHistory.reduce((sum, item) => sum + item.timeMs, 0) / timedHistory.length
+            : null;
         if (DOM.labReportEpochBadge) {
             DOM.labReportEpochBadge.textContent = `${training.epoch} epoch${training.epoch === 1 ? '' : 's'}`;
         }
@@ -1325,13 +1605,15 @@
                     metricCard('Accuracy', `${(metrics.accuracy * 100).toFixed(1)}%`, 'emerald'),
                     metricCard('Training loss', formatNumber(last.loss, 5), 'indigo'),
                     metricCard('Validation loss', formatNumber(last.validationLoss, 5), 'amber'),
-                    metricCard('Samples', String(metrics.count), 'slate')
+                    metricCard('Samples', String(metrics.count), 'slate'),
+                    metricCard('Avg epoch', formatEpochTime(averageTime), 'slate')
                 ].join('')
                 : [
                     metricCard('MSE', metrics ? formatNumber(metrics.mse, 5) : '—', 'blue'),
                     metricCard('RMSE', metrics ? formatNumber(metrics.rmse, 5) : '—', 'blue'),
                     metricCard('MAE', metrics ? formatNumber(metrics.mae, 5) : '—', 'blue'),
-                    metricCard('R²', metrics ? formatNumber(metrics.r2, 4) : '—', 'indigo')
+                    metricCard('R²', metrics ? formatNumber(metrics.r2, 4) : '—', 'indigo'),
+                    metricCard('Avg epoch', formatEpochTime(averageTime), 'slate')
                 ].join('');
             DOM.labReportSummary.innerHTML = summary;
         }
@@ -1417,8 +1699,7 @@
         `;
     };
 
-    const drawLossChart = function () {
-        const canvas = DOM.labLossChart;
+    const drawLossChartOnCanvas = function (canvas) {
         if (!canvas) {
             return;
         }
@@ -1494,6 +1775,18 @@
         context.fillText(String(history.length), width - padding.right, height - padding.bottom + 8);
     };
 
+    const drawLossChart = function () {
+        drawLossChartOnCanvas(DOM.labLossChart);
+    };
+
+    const drawMetricsChart = function () {
+        drawLossChartOnCanvas(DOM.labMetricsChart);
+    };
+
+    App.drawLabMetricsChart = function () {
+        drawMetricsChart();
+    };
+
     const initializeDialogEvents = function () {
         if (DOM.dataHubDialogConfirmBtn) {
             DOM.dataHubDialogConfirmBtn.addEventListener('click', () => {
@@ -1530,6 +1823,11 @@
             if (DOM.labReportModal && !DOM.labReportModal.classList.contains('hidden')) {
                 App.closeLabReport();
                 event.stopPropagation();
+                return;
+            }
+            if (DOM.labsModal && !DOM.labsModal.classList.contains('hidden')) {
+                App.closeLabsModal();
+                event.stopPropagation();
             }
         }, true);
     };
@@ -1537,7 +1835,7 @@
     App.drawLabDatasetPoints = function (context, mapPoint, space, viewMap) {
         const dataset = State.dataset;
         const training = State.lab.training;
-        if (!dataset.loaded || !dataset.plotPoints.length || (!training.active && !training.complete)) {
+        if (!dataset.loaded || !dataset.plotPoints.length) {
             return false;
         }
 
@@ -1575,9 +1873,6 @@
         };
 
         if (space === 'original') {
-            if (training.complete) {
-                dataset.plotPoints.forEach(item => drawPoint(mapPoint(item.point), classifyColor(item.classIndex), { radius: 5.5 }));
-            }
             return true;
         }
 
@@ -1597,20 +1892,51 @@
         return true;
     };
 
+    App.openLabsModal = function () {
+        if (!DOM.labsModal) {
+            return;
+        }
+        DOM.labsModal.classList.remove('hidden');
+        if (DOM.labsToggleBtn) {
+            DOM.labsToggleBtn.setAttribute('aria-expanded', 'true');
+        }
+        App.setLabStep(State.lab.step || 'datahub');
+        App.syncLabModelingUi();
+        if (DOM.closeLabsBtn) {
+            DOM.closeLabsBtn.focus();
+        }
+    };
+
+    App.closeLabsModal = function () {
+        if (!DOM.labsModal) {
+            return;
+        }
+        DOM.labsModal.classList.add('hidden');
+        if (DOM.labsToggleBtn) {
+            DOM.labsToggleBtn.setAttribute('aria-expanded', 'false');
+            DOM.labsToggleBtn.focus();
+        }
+    };
+
     App.initLab = function () {
         if (!DOM.labStepButtons || !DOM.labDatasetList) {
             return;
         }
 
-        const originalSetSettingsTab = App.setSettingsTab;
-        if (typeof originalSetSettingsTab === 'function') {
-            App.setSettingsTab = function (tabName) {
-                originalSetSettingsTab(tabName);
-                if (tabName === 'data') {
-                    App.setLabStep(State.lab.step || 'datahub');
+        if (DOM.labsToggleBtn) {
+            DOM.labsToggleBtn.addEventListener('click', () => {
+                if (DOM.labsModal && !DOM.labsModal.classList.contains('hidden')) {
+                    App.closeLabsModal();
+                } else {
+                    App.openLabsModal();
                 }
-            };
+            });
         }
+        [DOM.closeLabsBtn, DOM.doneLabsBtn, DOM.labsBackdrop].forEach(element => {
+            if (element) {
+                element.addEventListener('click', App.closeLabsModal);
+            }
+        });
 
         DOM.labStepButtons.forEach(button => {
             button.addEventListener('click', () => App.setLabStep(button.dataset.labStep));
@@ -1630,7 +1956,7 @@
             });
         }
 
-        [DOM.labLossSelect, DOM.labOptimizerSelect, DOM.labBatchModeSelect, DOM.labLearningRate, DOM.labValidationSplit, DOM.labEpochs].forEach(input => {
+        [DOM.labLossSelect, DOM.labOptimizerSelect, DOM.labBatchModeSelect, DOM.labLearningRate, DOM.labValidationSplit, DOM.labEpochs, DOM.labEpochDuration].forEach(input => {
             if (!input) {
                 return;
             }

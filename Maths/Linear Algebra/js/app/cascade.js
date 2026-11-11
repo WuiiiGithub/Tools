@@ -190,6 +190,10 @@
                 App.deleteActivationLayer(e.currentTarget.dataset.id);
             });
         });
+
+        if (typeof App.syncLabArchitecture === 'function') {
+            App.syncLabArchitecture();
+        }
     };
 
     App.addActivationLayer = function (activationName, insertIndex = State.matrixCascade.length) {
