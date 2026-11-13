@@ -167,13 +167,33 @@
             return App.transformPointThroughCascade(point);
         });
         let points = transformedPoints;
-        if (DOM.showOriginalCheckbox && DOM.showOriginalCheckbox.checked) {
+        if (State.perspectiveMode === 'transformed') {
+            const enabledLayers = State.matrixCascade.filter(layer => layer.enabled !== false);
+            const terminalLayer = enabledLayers[enabledLayers.length - 1];
+            const outputLimits = terminalLayer && App.isActivationLayer(terminalLayer)
+                ? Activation.getOutputLimits(terminalLayer.name)
+                : null;
+            const rangePoints = outputLimits
+                && Number.isFinite(outputLimits.min)
+                && Number.isFinite(outputLimits.max)
+                ? [
+                    [outputLimits.min, outputLimits.min],
+                    [outputLimits.min, outputLimits.max],
+                    [outputLimits.max, outputLimits.min],
+                    [outputLimits.max, outputLimits.max]
+                ]
+                : [];
+            points = transformedPoints.concat(
+                datasetInputPoints.map(point => App.transformPointThroughCascade(point)),
+                rangePoints
+            );
+        } else if (DOM.showOriginalCheckbox && DOM.showOriginalCheckbox.checked) {
             points = (DOM.showTransformedCheckbox && DOM.showTransformedCheckbox.checked)
                 ? inputPoints.concat(transformedPoints)
                 : inputPoints;
         }
 
-        if (App.hasActivation('relu')) {
+        if (State.perspectiveMode !== 'transformed' && App.hasActivation('relu')) {
             points = points.concat(inputPoints);
         }
 
@@ -199,6 +219,58 @@
         State.scale = MathCore.clamp(targetScale, Config.MIN_SCALE, Config.MAX_SCALE);
         State.offsetX = -centerPointX * State.scale;
         State.offsetY = centerPointY * State.scale;
+    };
+
+    App.ensureDatasetVisible = function () {
+        if (State.cameraInteracted) {
+            return false;
+        }
+        const dataset = State.dataset;
+        if (!dataset || !dataset.loaded || !Array.isArray(dataset.plotPoints) || dataset.plotPoints.length === 0) {
+            return false;
+        }
+
+        const viewTransformMatrix = App.getViewTransformMatrix();
+        const showOriginal = State.perspectiveMode !== 'transformed'
+            && DOM.showOriginalCheckbox
+            && DOM.showOriginalCheckbox.checked;
+        const showTransformed = DOM.showTransformedCheckbox && DOM.showTransformedCheckbox.checked;
+        if (!showOriginal && !showTransformed) {
+            return false;
+        }
+
+        let visible = true;
+        dataset.plotPoints.some(item => {
+            const points = [];
+            if (showOriginal) {
+                points.push(MathCore.multiplyMatrixVector(viewTransformMatrix, item.point));
+            }
+            if (showTransformed) {
+                points.push(MathCore.multiplyMatrixVector(
+                    viewTransformMatrix,
+                    App.transformPointThroughCascade(item.point)
+                ));
+            }
+
+            return points.some(point => {
+                const canvasPoint = App.toCanvasCoords(point[0], point[1]);
+                if (!Number.isFinite(canvasPoint.cx) || !Number.isFinite(canvasPoint.cy)) {
+                    return true;
+                }
+                if (canvasPoint.cx < 0 || canvasPoint.cx > DOM.canvas.width
+                    || canvasPoint.cy < 0 || canvasPoint.cy > DOM.canvas.height) {
+                    visible = false;
+                    return true;
+                }
+                return false;
+            });
+        });
+
+        if (!visible) {
+            App.fitViewToScene();
+        }
+
+        return !visible;
     };
 
     App.getDynamicFontSize = function (baseFontSize) {

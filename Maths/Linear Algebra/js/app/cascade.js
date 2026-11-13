@@ -15,6 +15,11 @@
     const getActivationFormula = name => ACTIVATION_FORMULAS[name] || ACTIVATION_FORMULAS.linear;
 
     const getMatrixNumber = matrix => App.getMatrixLayers().indexOf(matrix) + 1;
+    const invalidateTraining = function () {
+        if (typeof App.resetLabTraining === 'function') {
+            App.resetLabTraining({ keepDataset: true });
+        }
+    };
 
     App.resetCascadeForDataLoad = function () {
         State.matrixCascade = [];
@@ -124,7 +129,7 @@
             pill.innerHTML = `
                 <div class="flex items-center justify-between gap-2">
                     <div class="flex items-center gap-2">
-                        <input type="checkbox" class="enable-toggle h-[18px] w-[18px] cursor-pointer accent-emerald-500" data-id="${matrix.id}" ${matrix.enabled ? 'checked' : ''} title="${matrix.enabled ? 'Disable Weight Matrix' : 'Enable Weight Matrix'}">
+                            <input type="checkbox" class="enable-toggle h-[18px] w-[18px] cursor-pointer accent-emerald-500" data-id="${matrix.id}" ${matrix.enabled !== false ? 'checked' : ''} title="${matrix.enabled !== false ? 'Disable Weight Matrix' : 'Enable Weight Matrix'}">
                         <span class="font-bold text-slate-800">W<sub>${matrixCount}</sub>${matrix.isInverse ? ' (Inverse)' : ''}</span>
                         <span class="rounded-md bg-white/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">y = W<sub>${matrixCount}</sub>x + b<sub>${matrixCount}</sub></span>
                     </div>
@@ -199,6 +204,7 @@
     App.addActivationLayer = function (activationName, insertIndex = State.matrixCascade.length) {
         const name = activationName || 'linear';
         const index = App.getCascadeInsertionIndex(insertIndex);
+        invalidateTraining();
         const layer = {
             id: MathCore.generateUniqueId(),
             type: 'activation',
@@ -214,6 +220,7 @@
     };
 
     App.deleteActivationLayer = function (id) {
+        invalidateTraining();
         State.matrixCascade = State.matrixCascade.filter(item => item.id !== id);
         if (!App.hasExplicitActivationLayers()) {
             State.activeActivationName = 'linear';
@@ -224,6 +231,7 @@
     };
 
     App.clearCascadeActivations = function () {
+        invalidateTraining();
         State.matrixCascade = State.matrixCascade.filter(layer => !App.isActivationLayer(layer));
         State.activeActivationName = 'linear';
         App.renderMatrixCascade();
@@ -234,6 +242,7 @@
     App.setCascadeActivation = function (activationName) {
         const name = activationName || 'linear';
         const activations = App.getActivationLayers();
+        invalidateTraining();
 
         if (activations.length === 0) {
             State.activeActivationName = name;
@@ -256,6 +265,7 @@
             return;
         }
 
+        invalidateTraining();
         layer.enabled = enabled;
         App.fitViewToScene();
         App.drawScene();
@@ -312,7 +322,12 @@
         const m11 = parseFloat(DOM.m11Input.value);
         const bx = DOM.bxInput ? (parseFloat(DOM.bxInput.value) || 0) : 0;
         const by = DOM.byInput ? (parseFloat(DOM.byInput.value) || 0) : 0;
+        if (![m00, m01, m10, m11, bx, by].every(Number.isFinite)) {
+            App.showMessage('Enter valid numbers for every matrix and bias value.', 'error');
+            return;
+        }
 
+        invalidateTraining();
         State.matrixCascade.splice(App.getCascadeInsertionIndex(State.matrixCascade.length), 0, {
             id: MathCore.generateUniqueId(),
             type: 'matrix',
@@ -361,6 +376,12 @@
         const bx = DOM.bxInput ? (parseFloat(DOM.bxInput.value) || 0) : 0;
         const by = DOM.byInput ? (parseFloat(DOM.byInput.value) || 0) : 0;
 
+        if (![m00, m01, m10, m11, bx, by].every(Number.isFinite)) {
+            App.showMessage('Enter valid numbers for every matrix and bias value.', 'error');
+            return;
+        }
+
+        invalidateTraining();
         if (State.currentEditorIsInverse) {
             const inverseOfCurrentInput = MathCore.calculateInverse([[m00, m01], [m10, m11]]);
             if (!inverseOfCurrentInput) {
@@ -382,6 +403,7 @@
     };
 
     App.deleteMatrix = function (id) {
+        invalidateTraining();
         State.matrixCascade = State.matrixCascade.filter(item => item.id !== id);
         App.renderMatrixCascade();
         App.fitViewToScene();
@@ -398,6 +420,7 @@
         }
 
         const sourceIndex = State.matrixCascade.indexOf(matrixToDuplicate);
+        invalidateTraining();
         State.matrixCascade.splice(sourceIndex + 1, 0, {
             id: MathCore.generateUniqueId(),
             type: 'matrix',

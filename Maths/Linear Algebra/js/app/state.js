@@ -18,6 +18,7 @@
         axisFontSize: Visuo.Config.AXIS_LABEL_BASE_FONT_SIZE,
         vectorFontSize: Visuo.Config.VECTOR_LABEL_BASE_FONT_SIZE,
         isDragging: false,
+        cameraInteracted: false,
         lastMouseX: 0,
         lastMouseY: 0,
         hoveredVector: null,
@@ -56,6 +57,7 @@
         currentEditorIsInverse: false,
 
         perspectiveMode: 'original',
+        originalVisibleBeforeTransformed: null,
         settingsTab: 'view',
 
         transformModeActive: false,

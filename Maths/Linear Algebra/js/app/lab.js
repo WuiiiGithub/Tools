@@ -6,6 +6,13 @@
     const { DOM, State, Config, Math: MathCore } = Visuo;
 
     const STORAGE_KEY = 'visuo.lab.datasets.v1';
+    const BUNDLED_DATASETS = [
+        {
+            name: 'Glass sample (Si / Ca)',
+            fileName: 'glass.csv',
+            path: 'datasets/glass.csv'
+        }
+    ];
     const DEFAULT_CLASS_COLORS = Config.DEFAULT_CLASS_COLORS.slice();
     const LAB_EPOCH_DEFAULT_MS = 55;
     const LAB_EPOCH_MIN_MS = 16;
@@ -260,6 +267,48 @@
         renderDatasetPreview();
     };
 
+    const seedBundledDatasets = async function () {
+        const datasets = getStoredDatasets();
+        let changed = false;
+
+        for (const bundled of BUNDLED_DATASETS) {
+            const exists = datasets.some(dataset => dataset.name.toLowerCase() === bundled.name.toLowerCase());
+            if (exists) {
+                continue;
+            }
+
+            try {
+                const response = await fetch(bundled.path);
+                if (!response.ok) {
+                    continue;
+                }
+                const sourceText = sanitizeCsvText(await response.text());
+                const validation = validateCsvText(sourceText);
+                if (!validation.ok) {
+                    continue;
+                }
+                datasets.unshift({
+                    name: bundled.name,
+                    fileName: bundled.fileName,
+                    csvText: sourceText,
+                    headers: validation.headers,
+                    rows: validation.rows.length,
+                    columns: validation.headers.length,
+                    createdAt: new Date().toISOString()
+                });
+                changed = true;
+            } catch (error) {
+                continue;
+            }
+        }
+
+        if (!changed || !saveStoredDatasets(datasets)) {
+            return;
+        }
+        renderDataHubList();
+        renderDatasetPreview();
+    };
+
     App.setLabStep = function (stepName) {
         const nextStep = ['datahub', 'preprocessing', 'modeling'].includes(stepName) ? stepName : 'datahub';
         State.lab.step = nextStep;
@@ -465,11 +514,17 @@
         return true;
     };
 
+    let datasetFileReadToken = 0;
     const handleDatasetFile = function (file) {
         if (!file) {
             return;
         }
+        const readToken = datasetFileReadToken + 1;
+        datasetFileReadToken = readToken;
         file.text().then(text => {
+            if (readToken !== datasetFileReadToken) {
+                return;
+            }
             const validation = validateCsvText(text);
             if (!validation.ok) {
                 setDataHubStatus(validation.error, 'error');
@@ -483,8 +538,14 @@
                 rows: validation.rows
             });
         }).catch(() => {
+            if (readToken !== datasetFileReadToken) {
+                return;
+            }
             setDataHubStatus('Could not read the selected CSV file.', 'error');
         }).finally(() => {
+            if (readToken !== datasetFileReadToken) {
+                return;
+            }
             if (DOM.labDatasetFileInput) {
                 DOM.labDatasetFileInput.value = '';
             }
@@ -602,13 +663,17 @@
         const inputColumns = [rawInputs.map(item => item[0]), rawInputs.map(item => item[1])];
         const inputMean = inputColumns.map(mean);
         const inputStd = inputColumns.map((values, index) => stdDev(values, inputMean[index]));
+        const firstEnabledLayer = State.matrixCascade.find(layer => layer.enabled !== false);
+        const normalizeInputs = !firstEnabledLayer || App.isMatrixLayer(firstEnabledLayer);
+        const appliedMean = normalizeInputs ? inputMean : [0, 0];
+        const appliedStd = normalizeInputs ? inputStd : [1, 1];
         const targetMean = [0, 0];
         const targetStd = [1, 1];
 
         samples.forEach(sample => {
             sample.x = [
-                (sample.input[0] - inputMean[0]) / inputStd[0],
-                (sample.input[1] - inputMean[1]) / inputStd[1]
+                (sample.input[0] - appliedMean[0]) / appliedStd[0],
+                (sample.input[1] - appliedMean[1]) / appliedStd[1]
             ];
             sample.y = sample.target.slice();
         });
@@ -616,8 +681,8 @@
         return {
             samples,
             classification,
-            inputMean,
-            inputStd,
+            inputMean: appliedMean,
+            inputStd: appliedStd,
             targetMean,
             targetStd,
             targetLabels: classification ? [] : [
@@ -661,25 +726,6 @@
         };
     };
 
-    const randomNormal = function (rng) {
-        let u = 0;
-        let v = 0;
-        while (u === 0) {
-            u = rng();
-        }
-        while (v === 0) {
-            v = rng();
-        }
-        return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-    };
-
-    const randomMatrix = function (rng, scale = 0.8) {
-        return [
-            [randomNormal(rng) * scale, randomNormal(rng) * scale],
-            [randomNormal(rng) * scale, randomNormal(rng) * scale]
-        ];
-    };
-
     const effectiveMatrix = function (layer) {
         const values = clone(layer.values || [[1, 0], [0, 1]]);
         if (layer.isInverse) {
@@ -688,63 +734,21 @@
         return values;
     };
 
-    const createDefaultArchitecture = function (rng, classification) {
-        const cascade = [
-            {
-                id: 'lab_w1',
-                type: 'matrix',
-                values: randomMatrix(rng),
-                bias: [0, 0],
-                isInverse: false,
-                enabled: true
-            },
-            {
-                id: 'lab_a1',
-                type: 'activation',
-                name: 'tanh',
-                enabled: true
-            },
-            {
-                id: 'lab_w2',
-                type: 'matrix',
-                values: randomMatrix(rng),
-                bias: [0, 0],
-                isInverse: false,
-                enabled: true
-            }
-        ];
-        if (classification) {
-            cascade.push({
-                id: 'lab_a2',
-                type: 'activation',
-                name: 'sigmoid',
-                enabled: true
-            });
-        }
-        State.matrixCascade = cascade;
-        State.activeActivationName = 'linear';
-    };
-
-    const ensureTrainingArchitecture = function (rng, classification) {
-        if (State.matrixCascade.length === 0) {
-            createDefaultArchitecture(rng, classification);
-        }
-
+    const ensureTrainingArchitecture = function (classification) {
         const hasEnabledMatrix = State.matrixCascade.some(layer => layer.enabled !== false && App.isMatrixLayer(layer));
         if (!hasEnabledMatrix) {
-            State.matrixCascade.unshift({
-                id: `lab_w_${Date.now()}`,
-                type: 'matrix',
-                values: randomMatrix(rng),
-                bias: [0, 0],
-                isInverse: false,
-                enabled: true
-            });
+            return false;
         }
 
-        if (App.hasExplicitActivationLayers()) {
+        const internalActivationIds = new Set(['lab_legacy_activation', 'lab_class_sigmoid']);
+        const hasUserActivation = State.matrixCascade.some(layer => {
+            return App.isActivationLayer(layer) && !internalActivationIds.has(layer.id);
+        });
+        const hasLegacyActivation = State.matrixCascade.some(layer => layer.id === 'lab_legacy_activation');
+
+        if (hasUserActivation) {
             State.matrixCascade = State.matrixCascade.filter(layer => layer.id !== 'lab_legacy_activation');
-        } else {
+        } else if (!hasLegacyActivation) {
             const legacyActivation = State.activeActivationName || 'linear';
             if (legacyActivation !== 'linear') {
                 State.matrixCascade.push({
@@ -772,10 +776,13 @@
             }
         }
         State.matrixCascade = withoutOutput;
+        return true;
     };
 
-    const buildTrainingArchitecture = function (rng, classification) {
-        ensureTrainingArchitecture(rng, classification);
+    const buildTrainingArchitecture = function (classification) {
+        if (!ensureTrainingArchitecture(classification)) {
+            return null;
+        }
         const nodes = [];
         State.matrixCascade.forEach(layer => {
             if (layer.enabled === false) {
@@ -826,7 +833,13 @@
 
     const outputGradient = function (output, target, loss, classification) {
         if (classification) {
-            return [(output[0] - target[0]) / 2, (output[1] - target[1]) / 2];
+            const safe = value => MathCore.clamp(value, 1e-7, 1 - 1e-7);
+            const probability0 = safe(output[0]);
+            const probability1 = safe(output[1]);
+            return [
+                (output[0] - target[0]) / (2 * probability0 * (1 - probability0)),
+                (output[1] - target[1]) / (2 * probability1 * (1 - probability1))
+            ];
         }
         if (loss === 'mae') {
             return [Math.sign(output[0] - target[0]) / 2, Math.sign(output[1] - target[1]) / 2];
@@ -1005,7 +1018,7 @@
     const applyModelToCascade = function (model, classification, scaler) {
         const inputStd = scaler ? scaler.inputStd : [1, 1];
         const inputMean = scaler ? scaler.inputMean : [0, 0];
-        let firstMatrix = true;
+        const normalizedLayerId = model[0] && model[0].kind === 'matrix' ? model[0].layerId : null;
         model.forEach(node => {
             if (node.kind !== 'matrix') {
                 return;
@@ -1016,13 +1029,12 @@
             }
             let values = clone(node.W);
             let bias = clone(node.b);
-            if (firstMatrix) {
+            if (node.layerId === normalizedLayerId) {
                 values = values.map((row, rowIndex) => row.map((value, columnIndex) => value / inputStd[columnIndex]));
                 bias = bias.map((value, rowIndex) => value - (
                     node.W[rowIndex][0] * inputMean[0] / inputStd[0] +
                     node.W[rowIndex][1] * inputMean[1] / inputStd[1]
                 ));
-                firstMatrix = false;
             }
             layer.values = node.storedInverse
                 ? (MathCore.calculateInverse(values) || clone(values))
@@ -1099,6 +1111,7 @@
                 : 1 - Math.pow(-2 * progress + 2, 2) / 2;
             const displayModel = progress >= 1 ? to : interpolateModel(from, to, eased);
             applyModelToCascade(displayModel, context.classification, training.scaler);
+            App.ensureDatasetVisible();
             App.drawScene();
             if (progress < 1) {
                 training.morphFrame = global.requestAnimationFrame(step);
@@ -1327,6 +1340,9 @@
             DOM.labPredictionToggleBtn.classList.toggle('text-indigo-600', Boolean(training.showPredictions));
             DOM.labPredictionToggleBtn.classList.toggle('bg-indigo-50', Boolean(training.showPredictions));
         }
+        if (DOM.labModelHint && State.dataset.problemType === 'classification' && !training.complete) {
+            DOM.labModelHint.textContent = 'The red space shows the final network output after every enabled layer, including the last activation.';
+        }
     };
 
     App.resetLabTraining = function (options = {}) {
@@ -1335,7 +1351,8 @@
             clearTimeout(training.timer);
             training.timer = null;
         }
-        stopModelMorph(false);
+        stopModelMorph(true);
+        activeContext = null;
         training.active = false;
         training.playing = false;
         training.complete = false;
@@ -1348,11 +1365,6 @@
         training.showPredictions = false;
         if (DOM.labResultActions) {
             DOM.labResultActions.classList.add('hidden');
-        }
-        if (!options.keepDataset && State.dataset.loaded) {
-            State.matrixCascade = [];
-            App.renderMatrixCascade();
-            App.drawScene();
         }
         syncTrainingReadout();
         return true;
@@ -1382,7 +1394,11 @@
         }
 
         const training = State.lab.training;
-        training.model = buildTrainingArchitecture(rng, prepared.classification);
+        training.model = buildTrainingArchitecture(prepared.classification);
+        if (!training.model) {
+            App.showToast('Add at least one weight matrix to the cascade before training', 'error');
+            return null;
+        }
         training.scaler = {
             inputMean: prepared.inputMean,
             inputStd: prepared.inputStd,
@@ -1392,6 +1408,7 @@
         applyModelToCascade(training.model, prepared.classification, training.scaler);
         App.renderMatrixCascade();
         App.syncLabArchitecture();
+        State.cameraInteracted = false;
         App.fitViewToScene();
         App.drawScene();
 
@@ -1427,11 +1444,14 @@
             buildPredictions(activeContext);
         }
         App.renderMatrixCascade();
+        if (!State.cameraInteracted) {
+            App.fitViewToScene();
+        }
         App.drawScene();
         App.syncLabModelingUi();
         if (DOM.labModelHint) {
             DOM.labModelHint.textContent = training.metrics && training.metrics.task === 'classification'
-                ? 'Classification uses colors for classes. The report shows accuracy, precision, recall, F1, and the confusion matrix.'
+                ? 'Classification uses colors for classes. The red space shows the final network output after the last activation; the report shows accuracy, precision, recall, F1, and the confusion matrix.'
                 : 'Regression report includes MSE, MAE, RMSE, and R² for each selected target.';
         }
         App.showToast('Training complete', 'success');
@@ -1523,6 +1543,10 @@
                 training.timer = null;
             }
             stopModelMorph(true);
+            if (!State.cameraInteracted) {
+                App.fitViewToScene();
+            }
+            App.drawScene();
             syncTrainingReadout();
             return;
         }
@@ -1877,7 +1901,54 @@
         }
 
         if (!training.complete) {
-            dataset.plotPoints.forEach(item => drawPoint(mapPoint(item.point), classifyColor(item.classIndex), { radius: 5, alpha: 0.9 }));
+            dataset.plotPoints.forEach(item => {
+                const hiddenPoint = App.transformPointThroughCascade(item.point);
+                const viewPoint = typeof viewMap === 'function' ? viewMap(hiddenPoint) : mapPoint(item.point);
+                drawPoint(viewPoint, classifyColor(item.classIndex), { radius: 5, alpha: 0.9 });
+            });
+            return true;
+        }
+
+        const visualLength = typeof App.getVisualCascadeLength === 'function'
+            ? App.getVisualCascadeLength()
+            : State.matrixCascade.length;
+        const usesHiddenSpace = State.dataset.problemType === 'classification'
+            && visualLength < State.matrixCascade.length;
+
+        if (usesHiddenSpace) {
+            const predictionsByInput = new Map();
+            training.predictions.forEach(prediction => {
+                predictionsByInput.set(`${prediction.input[0]}|${prediction.input[1]}`, prediction);
+            });
+
+            dataset.plotPoints.forEach(item => {
+                const hiddenPoint = App.transformPointThroughCascade(item.point);
+                const viewPoint = typeof viewMap === 'function' ? viewMap(hiddenPoint) : mapPoint(item.point);
+                drawPoint(viewPoint, classifyColor(item.classIndex), { radius: 5.5 });
+
+                if (!training.showPredictions) {
+                    return;
+                }
+
+                const prediction = predictionsByInput.get(`${item.point[0]}|${item.point[1]}`);
+                if (!prediction) {
+                    return;
+                }
+
+                const canvasPoint = App.toCanvasCoords(viewPoint[0], viewPoint[1]);
+                if (!Number.isFinite(canvasPoint.cx) || !Number.isFinite(canvasPoint.cy)) {
+                    return;
+                }
+
+                context.save();
+                context.beginPath();
+                context.arc(canvasPoint.cx, canvasPoint.cy, 8.5, 0, Math.PI * 2);
+                context.setLineDash([3, 3]);
+                context.lineWidth = 2;
+                context.strokeStyle = classifyColor(prediction.predictedClass);
+                context.stroke();
+                context.restore();
+            });
             return true;
         }
 
@@ -1978,6 +2049,7 @@
 
         initializeDialogEvents();
         App.renderDataHub();
+        seedBundledDatasets();
         App.setLabStep(State.lab.step || 'datahub');
         App.syncLabModelingUi();
     };

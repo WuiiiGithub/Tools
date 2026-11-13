@@ -3,7 +3,7 @@
 
     const Visuo = global.Visuo;
     const App = Visuo.App;
-    const { State, Math: MathCore } = Visuo;
+    const { DOM, State, Math: MathCore } = Visuo;
 
     function boot() {
         App.initializeCanvas();
@@ -37,8 +37,23 @@
         boot();
     }
 
-    window.addEventListener('resize', () => {
+    const handleCanvasResize = function () {
+        const width = DOM.canvas.offsetWidth;
+        const height = DOM.canvas.offsetHeight;
+        if (width === DOM.canvas.width && height === DOM.canvas.height) {
+            return;
+        }
         App.initializeCanvas();
+        if (!State.cameraInteracted) {
+            App.fitViewToScene();
+        }
         App.drawScene();
-    });
+    };
+
+    window.addEventListener('resize', handleCanvasResize);
+
+    if (typeof global.ResizeObserver === 'function') {
+        const canvasObserver = new global.ResizeObserver(handleCanvasResize);
+        canvasObserver.observe(DOM.canvas);
+    }
 })(window);

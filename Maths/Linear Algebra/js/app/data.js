@@ -291,11 +291,11 @@
 
         if (DOM.dataLoadHint) {
             if (dataset.loading) {
-                DOM.dataLoadHint.textContent = 'Preparing points and clearing the cascade...';
+                DOM.dataLoadHint.textContent = 'Preparing points in the original and red transformed spaces...';
             } else if (dataset.loaded) {
                 DOM.dataLoadHint.textContent = 'Points loaded. Add matrices or activations to transform them in the red space.';
             } else if (dataset.ready) {
-                DOM.dataLoadHint.textContent = 'Loading clears the cascade, then plots points in the original and red transformed spaces.';
+                DOM.dataLoadHint.textContent = 'Loading keeps your cascade and plots points in the original and red transformed spaces.';
             } else {
                 DOM.dataLoadHint.textContent = 'Complete preprocessing to load points.';
             }
@@ -419,7 +419,11 @@
             }
         }
 
-        const requiresEncoding = selectedClasses.some(className => !isNumericValue(className));
+        const numericLabels = selectedClasses.map(Number);
+        const numericLabelsAreUnique = selectedClasses.every(isNumericValue)
+            && new Set(numericLabels).size === numericLabels.length;
+        const requiresEncoding = selectedClasses.some(className => !isNumericValue(className))
+            || !numericLabelsAreUnique;
         const labelMapping = selectedClasses.map((label, index) => ({
             label,
             encoded: requiresEncoding ? index : Number(label)
@@ -551,7 +555,7 @@
         if (dataset.problemType === 'classification') {
             if (!dataset.outputColumn) {
                 dataset.ready = false;
-                updateClassSelectionUi();
+                clearClassificationEncoding();
                 updateLoadButton();
                 setError('Choose a class column to color the points.');
                 return false;
@@ -730,6 +734,11 @@
         State.dataset.loadToken += 1;
         State.dataset.valid = true;
         State.dataset.ready = false;
+        State.lab.activeDatasetName = '';
+        State.lab.pendingDataset = null;
+        if (typeof App.resetLabTraining === 'function') {
+            App.resetLabTraining();
+        }
 
         if (DOM.csvFileName) {
             DOM.csvFileName.textContent = fileName;
@@ -790,7 +799,15 @@
         dataset.loadToken += 1;
         dataset.valid = false;
         dataset.ready = false;
+        State.lab.activeDatasetName = '';
+        State.lab.pendingDataset = null;
+        if (typeof App.resetLabTraining === 'function') {
+            App.resetLabTraining();
+        }
 
+        if (DOM.labActiveDatasetName) {
+            DOM.labActiveDatasetName.textContent = 'No dataset selected';
+        }
         if (DOM.csvFileName) {
             DOM.csvFileName.textContent = 'No file selected';
         }
@@ -825,6 +842,7 @@
             select.disabled = true;
         });
 
+        updateTargetSelects();
         clearError();
         updateClassSelectionUi();
         updateEncodingSummary();
@@ -855,7 +873,6 @@
         updateLoadButton();
         setStatus('Loading points...', 'warning');
 
-        App.resetCascadeForDataLoad();
         App.fitViewToScene();
         App.drawScene();
 
@@ -864,6 +881,9 @@
                 return;
             }
 
+            if (typeof App.resetLabTraining === 'function') {
+                App.resetLabTraining({ keepDataset: true });
+            }
             dataset.loading = false;
             dataset.loaded = true;
             dataset.plotPoints = buildDatasetPlotPoints();
@@ -874,7 +894,10 @@
             App.showToast('Loading complete', 'success');
 
             setTimeout(() => {
-                if (!dataset.loaded) {
+                if (loadToken !== dataset.loadToken || !dataset.loaded) {
+                    return;
+                }
+                if (State.lab.training.active || State.lab.training.complete || State.lab.training.epoch > 0) {
                     return;
                 }
                 if (typeof App.onLabDatasetLoaded === 'function') {
@@ -893,15 +916,24 @@
             return;
         }
 
+        let fileReadToken = 0;
         const readFile = file => {
             if (!file) {
                 return;
             }
 
+            const readToken = fileReadToken + 1;
+            fileReadToken = readToken;
             file.text().then(text => {
+                if (readToken !== fileReadToken) {
+                    return;
+                }
                 App.importCsvText(text, file.name);
                 DOM.csvFileInput.value = '';
             }).catch(() => {
+                if (readToken !== fileReadToken) {
+                    return;
+                }
                 setError('Could not read the selected CSV file.');
                 DOM.csvFileInput.value = '';
             });

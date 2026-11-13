@@ -63,8 +63,17 @@
 
         DOM.perspectiveToggleBtn.addEventListener('click', () => {
             State.perspectiveMode = State.perspectiveMode === 'original' ? 'transformed' : 'original';
+            if (State.perspectiveMode === 'transformed') {
+                State.originalVisibleBeforeTransformed = DOM.showOriginalCheckbox.checked;
+                DOM.showOriginalCheckbox.checked = false;
+            } else if (State.originalVisibleBeforeTransformed != null) {
+                DOM.showOriginalCheckbox.checked = State.originalVisibleBeforeTransformed;
+                State.originalVisibleBeforeTransformed = null;
+            }
             State.selectedPointInfo = null;
+            State.cameraInteracted = false;
             App.applyPerspectiveButtonStyle();
+            App.fitViewToScene();
             App.drawScene();
         });
 
@@ -316,6 +325,9 @@
             if (State.isDragging) {
                 const deltaX = e.clientX - State.lastMouseX;
                 const deltaY = e.clientY - State.lastMouseY;
+                if (deltaX !== 0 || deltaY !== 0) {
+                    State.cameraInteracted = true;
+                }
                 State.offsetX += deltaX;
                 State.offsetY += deltaY;
                 State.lastMouseX = e.clientX;
@@ -438,6 +450,7 @@
 
         DOM.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
+            State.cameraInteracted = true;
 
             const mouseX = e.clientX - DOM.canvas.getBoundingClientRect().left;
             const mouseY = e.clientY - DOM.canvas.getBoundingClientRect().top;
@@ -584,6 +597,9 @@
                 return;
             }
 
+            if (typeof App.resetLabTraining === 'function') {
+                App.resetLabTraining({ keepDataset: true });
+            }
             const [removed] = State.matrixCascade.splice(draggedIndex, 1);
 
             if (targetPill) {

@@ -29,6 +29,53 @@
         return Math.abs(jacobian[0][0] * jacobian[1][1] - jacobian[0][1] * jacobian[1][0]);
     };
 
+    const getMapAxisLengths = (mapPoint, bounds) => {
+        const spanX = bounds.maxX - bounds.minX;
+        const spanY = bounds.maxY - bounds.minY;
+        const stepX = Math.max(spanX * 1e-4, 1e-7);
+        const stepY = Math.max(spanY * 1e-4, 1e-7);
+        const fractions = [0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95];
+        let xLength = 0;
+        let yLength = 0;
+
+        const isFinitePoint = point => Array.isArray(point)
+            && Number.isFinite(point[0])
+            && Number.isFinite(point[1]);
+
+        fractions.forEach(fx => {
+            const x = bounds.minX + spanX * fx;
+            fractions.forEach(fy => {
+                const y = bounds.minY + spanY * fy;
+                const point = mapPoint([x, y]);
+
+                if (!isFinitePoint(point)) {
+                    return;
+                }
+
+                const alongX = mapPoint([x + stepX, y]);
+                if (isFinitePoint(alongX)) {
+                    const length = Math.hypot(alongX[0] - point[0], alongX[1] - point[1]) / stepX;
+                    if (Number.isFinite(length)) {
+                        xLength = Math.max(xLength, length);
+                    }
+                }
+
+                const alongY = mapPoint([x, y + stepY]);
+                if (isFinitePoint(alongY)) {
+                    const length = Math.hypot(alongY[0] - point[0], alongY[1] - point[1]) / stepY;
+                    if (Number.isFinite(length)) {
+                        yLength = Math.max(yLength, length);
+                    }
+                }
+            });
+        });
+
+        return {
+            xLength: xLength > 1e-12 ? xLength : 1,
+            yLength: yLength > 1e-12 ? yLength : 1
+        };
+    };
+
     const getLineCompression = (determinantFn, activationName, determinantAtOrigin, points) => {
         if (determinantAtOrigin <= 1e-12) {
             return 0;
@@ -287,12 +334,13 @@
         const activationName = config.activationName || 'linear';
         const spanX = bounds.maxX - bounds.minX;
         const spanY = bounds.maxY - bounds.minY;
+        if (![bounds.minX, bounds.maxX, bounds.minY, bounds.maxY, spanX, spanY].every(Number.isFinite) || spanX <= 0 || spanY <= 0) {
+            return;
+        }
 
-        const originView = mapPoint([0, 0]);
-        const xUnitView = mapPoint([1, 0]);
-        const yUnitView = mapPoint([0, 1]);
-        const xLength = Math.hypot(xUnitView[0] - originView[0], xUnitView[1] - originView[1]) || 1e-9;
-        const yLength = Math.hypot(yUnitView[0] - originView[0], yUnitView[1] - originView[1]) || 1e-9;
+        const axisLengths = getMapAxisLengths(mapPoint, bounds);
+        const xLength = axisLengths.xLength;
+        const yLength = axisLengths.yLength;
 
         const minSpan = Math.min(spanX, spanY);
         const maxSpan = Math.max(spanX, spanY);
@@ -301,8 +349,9 @@
             Config.MIN_GRID_DENSITY,
             Config.MAX_GRID_DENSITY
         );
-        const referenceLength = Math.sqrt(Math.max(xLength, 1e-9) * Math.max(yLength, 1e-9));
-        const minimumLength = Math.min(xLength, yLength);
+        const maxLength = Math.max(xLength, yLength);
+        const referenceLength = Math.max(Math.sqrt(Math.max(xLength, 1e-9) * Math.max(yLength, 1e-9)), maxLength * 0.25);
+        const minimumLength = Math.max(Math.min(xLength, yLength), referenceLength * 0.25);
         const desiredTickCount = Math.max(2, Config.DESIRED_TICK_COUNT * density);
         const targetSpacing = Config.TARGET_GRID_SPACING / density;
         const maxGridLines = Math.max(4, Math.round(Config.MAX_GRID_LINES * density));
@@ -310,12 +359,16 @@
 
         let gridStep = MathCore.getGridStep(tickStep, targetSpacing / (State.scale * referenceLength));
         const minimumStep = Config.MIN_GRID_SCREEN_SPACING / (State.scale * minimumLength);
+        const requiredStep = Math.max(minimumStep, maxSpan / maxGridLines);
 
-        if (gridStep < minimumStep) {
-            gridStep = MathCore.getNiceStep(minimumStep);
+        if (gridStep < requiredStep) {
+            gridStep = MathCore.getNiceStep(requiredStep);
+            if (gridStep < requiredStep) {
+                gridStep = requiredStep;
+            }
         }
-        if (maxSpan / gridStep > maxGridLines) {
-            gridStep = MathCore.getNiceStep(maxSpan / maxGridLines);
+        if (!Number.isFinite(gridStep) || gridStep <= 0) {
+            return;
         }
 
         const baseWidth = palette.gridWidth ?? 0.6;
@@ -337,7 +390,12 @@
         const drawGridLines = (step, min, max, vertical) => {
             const first = Math.ceil(min / step);
             const last = Math.floor(max / step);
+            const count = last - first;
             const tolerance = step * 1e-9;
+
+            if (!Number.isFinite(count) || count < 0 || count > 2000) {
+                return;
+            }
 
             for (let k = first; k <= last; k++) {
                 const value = k * step;
@@ -428,9 +486,18 @@
         const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
         const tickStep = MathCore.getNiceStep(span / Config.DESIRED_TICK_COUNT);
 
+        if (![bounds.minX, bounds.maxX, bounds.minY, bounds.maxY, span, tickStep].every(Number.isFinite) || tickStep <= 0) {
+            return;
+        }
+
         const drawAxisTicks = (axis, tickStep, min, max) => {
             const firstTick = Math.floor(min / tickStep);
             const lastTick = Math.ceil(max / tickStep);
+            const count = lastTick - firstTick;
+
+            if (!Number.isFinite(count) || count < 0 || count > 2000) {
+                return;
+            }
 
             for (let k = firstTick; k <= lastTick; k++) {
                 const value = k * tickStep;
@@ -615,12 +682,12 @@
 
         context.beginPath();
         context.moveTo(endPoint.cx, endPoint.cy);
-        context.lineTo(projXPoint.cx, endPoint.cy);
+        context.lineTo(projXPoint.cx, projXPoint.cy);
         context.stroke();
 
         context.beginPath();
         context.moveTo(endPoint.cx, endPoint.cy);
-        context.lineTo(endPoint.cx, projYPoint.cy);
+        context.lineTo(projYPoint.cx, projYPoint.cy);
         context.stroke();
 
         context.setLineDash([]);
@@ -705,6 +772,14 @@
             ? mergeBounds(originalBounds, finalTransformedBounds)
             : finalTransformedBounds;
         const viewMap = point => MathCore.multiplyMatrixVector(viewTransformMatrix, point);
+        const redMap = transformedMap;
+        const redBounds = transformedBounds;
+        const redIHatGlobal = transformedIHatGlobal;
+        const redJHatGlobal = transformedJHatGlobal;
+        const redOriginGlobal = transformedOriginGlobal;
+        const redIHatView = transformedIHatView;
+        const redJHatView = transformedJHatView;
+        const redOriginView = transformedOriginView;
         const drawDataset = (context, mapPoint, space) => {
             const drawnByLab = typeof App.drawLabDatasetPoints === 'function'
                 && App.drawLabDatasetPoints(context, mapPoint, space, viewMap);
@@ -754,7 +829,7 @@
             App.drawGrid(context, {
                 grid: 'rgba(185, 28, 28, 0.55)',
                 gridWidth: State.transformedGridThickness
-            }, transformedMap, transformedBounds, {
+            }, redMap, redBounds, {
                 activationName: lastNonlinearActivation,
                 adaptive: adaptiveTransformedRender,
                 modulate: modulateGrid,
@@ -771,18 +846,18 @@
                 }
             }
 
-            App.drawAxes(context, '#f87171', getAxisWidth(1.5, State.transformedGridThickness), transformedMap, transformedBounds, false, {
+            App.drawAxes(context, '#f87171', getAxisWidth(1.5, State.transformedGridThickness), redMap, redBounds, false, {
                 adaptive: adaptiveTransformedRender,
                 renderScope: State.renderScope
             });
-            App.drawTicksAndLabels(context, '#f87171', transformedMap, transformedBounds);
-            App.drawVector(context, transformedIHatView, '#dc2626', 4, 'X1', transformedOriginView);
-            App.drawVector(context, transformedJHatView, '#dc2626', 4, 'X2', transformedOriginView);
+            App.drawTicksAndLabels(context, '#f87171', redMap, redBounds);
+            App.drawVector(context, redIHatView, '#dc2626', 4, 'X1', redOriginView);
+            App.drawVector(context, redJHatView, '#dc2626', 4, 'X2', redOriginView);
 
             if (!isNonlinear && State.hoveredVector === 'X1') {
-                App.drawProjectionLines(context, transformedIHatView, '#dc2626');
+                App.drawProjectionLines(context, redIHatView, '#dc2626');
             } else if (!isNonlinear && State.hoveredVector === 'X2') {
-                App.drawProjectionLines(context, transformedJHatView, '#dc2626');
+                App.drawProjectionLines(context, redJHatView, '#dc2626');
             }
 
             drawDataset(context, transformedMap, 'transformed');
@@ -810,9 +885,9 @@
         } else if (State.hoveredVector === 'Y' && DOM.showOriginalCheckbox.checked) {
             hoveredVectorDetails = { label: 'Y', color: 'text-blue-600', view: jHatView, basisVector: jHat };
         } else if (State.hoveredVector === 'X1' && DOM.showTransformedCheckbox.checked) {
-            hoveredVectorDetails = { label: 'X1', color: 'text-red-600', view: transformedIHatView, basisVector: transformedIHatGlobal };
+            hoveredVectorDetails = { label: 'X1', color: 'text-red-600', view: redIHatView, basisVector: redIHatGlobal };
         } else if (State.hoveredVector === 'X2' && DOM.showTransformedCheckbox.checked) {
-            hoveredVectorDetails = { label: 'X2', color: 'text-red-600', view: transformedJHatView, basisVector: transformedJHatGlobal };
+            hoveredVectorDetails = { label: 'X2', color: 'text-red-600', view: redJHatView, basisVector: redJHatGlobal };
         } else if (State.hoveredVector === 'custom' && DOM.transformModeToggle && State.transformModeActive && customVectorInOriginalBasisView) {
             hoveredVectorDetails = { label: 'Custom', color: 'text-purple-600', view: customVectorInOriginalBasisView, basisVector: customVectorInOriginalBasis };
         }
@@ -834,8 +909,10 @@
             App.hideVectorInfoBox();
         }
 
-        if (DOM.showTransformedCheckbox.checked && (isNonlinear || tracePreview)) {
-            App.drawOriginDot(context, '#dc2626', transformedOriginView);
+        const transformedOriginChanged = Math.abs(redOriginGlobal[0]) > 1e-9
+            || Math.abs(redOriginGlobal[1]) > 1e-9;
+        if (DOM.showTransformedCheckbox.checked && (isNonlinear || tracePreview || transformedOriginChanged)) {
+            App.drawOriginDot(context, '#dc2626', redOriginView);
         }
         App.drawOriginDot(context, '#000000');
 

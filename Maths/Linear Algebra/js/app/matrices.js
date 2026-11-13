@@ -23,15 +23,23 @@
         return Visuo.State.matrixCascade.some(isActivationLayer);
     };
 
+    const getVisualCascadeLength = function () {
+        return Visuo.State.matrixCascade.length;
+    };
+
+    App.getVisualCascadeLength = getVisualCascadeLength;
+
     App.getLastNonlinearActivationLayer = function () {
-        const activations = App.getActivationLayers().filter(layer => layer.enabled !== false);
+        const cascade = Visuo.State.matrixCascade;
+        const endIndex = getVisualCascadeLength();
         let result = null;
 
-        activations.forEach(layer => {
-            if (layer.name && layer.name !== 'linear') {
+        for (let index = 0; index < endIndex; index++) {
+            const layer = cascade[index];
+            if (layer.enabled !== false && isActivationLayer(layer) && layer.name && layer.name !== 'linear') {
                 result = layer;
             }
-        });
+        }
 
         return result;
     };
@@ -92,7 +100,7 @@
         ];
 
         Visuo.State.matrixCascade.forEach(layer => {
-            if (!layer.enabled || !isMatrixLayer(layer)) {
+            if (layer.enabled === false || !isMatrixLayer(layer)) {
                 return;
             }
 
@@ -118,14 +126,17 @@
     App.transformPointThroughCascade = function (point) {
         let current = [point[0], point[1]];
         const hasExplicitActivations = App.hasExplicitActivationLayers();
+        const cascade = Visuo.State.matrixCascade;
+        const endIndex = getVisualCascadeLength();
 
-        Visuo.State.matrixCascade.forEach(layer => {
+        for (let index = 0; index < endIndex; index++) {
+            const layer = cascade[index];
             if (layer.enabled === false) {
-                return;
+                continue;
             }
 
             current = applyLayerForward(current, layer);
-        });
+        }
 
         if (!hasExplicitActivations) {
             const cascadeActivation = Visuo.State.activeActivationName || 'linear';
@@ -137,12 +148,12 @@
         return current;
     };
 
-    App.transformPointThroughLayersFrom = function (point, startIndex) {
+    App.transformPointThroughLayersFrom = function (point, startIndex, endIndex = getVisualCascadeLength()) {
         let current = [point[0], point[1]];
         const cascade = Visuo.State.matrixCascade;
         const firstIndex = Math.max(0, startIndex || 0);
 
-        for (let i = firstIndex; i < cascade.length; i++) {
+        for (let i = firstIndex; i < endIndex; i++) {
             const layer = cascade[i];
             if (layer.enabled === false) {
                 continue;
@@ -165,7 +176,8 @@
         }
 
         const cascade = Visuo.State.matrixCascade;
-        for (let i = cascade.length - 1; i >= 0; i--) {
+        const endIndex = getVisualCascadeLength();
+        for (let i = endIndex - 1; i >= 0; i--) {
             const layer = cascade[i];
             if (layer.enabled === false) {
                 continue;
@@ -178,17 +190,21 @@
                 continue;
             }
 
-            const bias = layer.bias || [0, 0];
-            current = [current[0] - bias[0], current[1] - bias[1]];
-
             let mat = layer.values;
-            if (!layer.isInverse) {
+            if (layer.isInverse) {
+                if (!calculateInverse(mat)) {
+                    continue;
+                }
+            } else {
                 const inv = calculateInverse(mat);
                 if (!inv) {
                     return null;
                 }
                 mat = inv;
             }
+
+            const bias = layer.bias || [0, 0];
+            current = [current[0] - bias[0], current[1] - bias[1]];
             current = Visuo.Math.multiplyMatrixVector(mat, current);
         }
 

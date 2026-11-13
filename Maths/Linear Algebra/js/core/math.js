@@ -33,18 +33,24 @@
             const b = matrix[0][1];
             const c = matrix[1][0];
             const d = matrix[1][1];
+            if (![a, b, c, d].every(Number.isFinite)) {
+                return null;
+            }
+
             const determinant = a * d - b * c;
             const matrixScale = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Math.abs(d));
+            const determinantThreshold = 1e-12 * matrixScale * matrixScale;
 
-            if (matrixScale === 0 || Math.abs(determinant) < 1e-12 * matrixScale * matrixScale) {
+            if (matrixScale === 0 || Math.abs(determinant) < determinantThreshold || !Number.isFinite(determinant)) {
                 return null;
             }
 
             const invDet = 1 / determinant;
-            return [
+            const inverse = [
                 [d * invDet, -b * invDet],
                 [-c * invDet, a * invDet]
             ];
+            return inverse.every(row => row.every(Number.isFinite)) ? inverse : null;
         },
 
         getNiceStep(step) {
@@ -88,7 +94,7 @@
                 const powerOfTen = Math.pow(10, exponent);
                 [1, 2, 5].forEach(multiplier => {
                     const candidate = multiplier * powerOfTen;
-                    if (candidate < minimumCandidate - 1e-12 || candidate > tickStep + 1e-12) {
+                    if (candidate < minimumCandidate * (1 - 1e-12) || candidate > tickStep * (1 + 1e-12)) {
                         return;
                     }
                     if (!Visuo.Math.isMultiple(tickStep, candidate)) {
